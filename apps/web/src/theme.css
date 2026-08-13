@@ -1,0 +1,63 @@
+/* Shared neon/cyberpunk token system — imported once (main.tsx) so both the header (App
+   level) and the feed screen (feed.css) draw from the same palette. Restrained on purpose:
+   two neon accents used deliberately (cyan for the default/interactive state, magenta
+   reserved for "this is the one active thing" — the tracked wallet, the logged-in user),
+   not neon-everything. */
+
+:root {
+  --bg: #0a0714;
+  --bg-raised: #150f24;
+  --border: #2b2145;
+  --text: #ecebff;
+  --text-muted: #8177a3;
+
+  --accent: #22e8ff;
+  --accent-glow: rgba(34, 232, 255, 0.35);
+  --accent2: #ff2ec4;
+  --accent2-glow: rgba(255, 46, 196, 0.4);
+
+  --long: #39ffb0;
+  --short: #ff2f5e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.ht-login,
+.ht-signing-in {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.ht-login h1 {
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-shadow:
+    0 0 8px var(--accent-glow),
+    0 0 20px var(--accent-glow);
+}
+
+.ht-login p {
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
+}

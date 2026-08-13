@@ -1,0 +1,36 @@
+/* Extends .ht-popup/.ht-popup-backdrop (see feed.css) — only the subscription-specific bits
+   live here. */
+
+.ht-subscription-status {
+  font-size: 0.85rem;
+}
+
+.ht-subscription-status-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ht-subscription-status-trial {
+  color: var(--accent);
+}
+
+.ht-subscription-status-active {
+  color: var(--long);
+}
+
+.ht-subscription-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.ht-subscription-error {
+  font-size: 0.8rem;
+  color: var(--short);
+}
+
+.ht-popup-close {
+  border-style: dashed;
+  color: var(--text-muted);
+}

@@ -1,0 +1,213 @@
+/* Mobile-first: title and the account menu share the top line (order 1/2), the price
+   ticker is forced onto its own full-width line below (order 3, flex-basis 100%) rather
+   than squeezing inline — on a phone-width header there's no room for it next to the title
+   without truncating either it or the username. Only past the desktop breakpoint below does
+   the ticker move back inline next to the title. */
+.ht-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.6rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.ht-header-title {
+  order: 1;
+}
+
+.ht-header-user {
+  order: 2;
+}
+
+/* Fixed-list price ticker (see PriceTicker.tsx) — scrolls horizontally on its own rather
+   than wrapping item-by-item if the full-width line still isn't quite wide enough. */
+.ht-price-ticker {
+  order: 3;
+  flex: 1 1 100%;
+  display: flex;
+  gap: 1.1rem;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.ht-price-ticker::-webkit-scrollbar {
+  display: none;
+}
+
+.ht-price-ticker-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ht-price-ticker-symbol {
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.ht-price-ticker-value {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  text-shadow: 0 0 6px var(--accent-glow);
+  transition:
+    color 0.4s ease,
+    text-shadow 0.4s ease;
+}
+
+/* Briefly flashed on an actual value change (see PriceTicker.tsx) — reuses --long/--short,
+   the same up/down color language as the rest of the app (buy/sell rows, LiveBadge) — makes
+   a real but small per-tick move (a few dollars on a $64k BTC price) visibly register
+   instead of quietly blending into the tabular digits. */
+.ht-price-ticker-value-up {
+  color: var(--long);
+  text-shadow: 0 0 8px var(--long);
+}
+
+.ht-price-ticker-value-down {
+  color: var(--short);
+  text-shadow: 0 0 8px var(--short);
+}
+
+.ht-header-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  text-shadow:
+    0 0 8px var(--accent-glow),
+    0 0 20px var(--accent-glow);
+}
+
+.ht-header-user {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ht-avatar-btn {
+  display: flex;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.ht-avatar-btn:hover,
+.ht-avatar-btn:focus-visible {
+  filter: brightness(1.15);
+}
+
+.ht-avatar-stack {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.ht-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  /* The one place magenta appears by default rather than on hover — a small always-on
+     "this is you" signal, echoed by the tracked-wallet box using the same accent. */
+  box-shadow:
+    0 0 0 2px var(--bg-raised),
+    0 0 0 3px var(--accent2),
+    0 0 10px var(--accent2-glow);
+}
+
+.ht-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--accent2);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* Layered on top of the letter, not swapped in for it — starts invisible and only fades
+   in once it has genuinely finished loading (see Header.tsx onLoad), so a slow or dead
+   photo URL never produces an empty circle, just the letter staying visible. */
+.ht-avatar-photo {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.2s ease;
+}
+
+.ht-header-name {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.ht-account-menu {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  right: 0;
+  min-width: 140px;
+  background: var(--bg-raised);
+  border: 1px solid var(--accent2);
+  border-radius: 6px;
+  box-shadow: 0 0 14px var(--accent2-glow);
+  padding: 0.35rem;
+  z-index: 10;
+}
+
+.ht-account-menu-item {
+  display: block;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text);
+  padding: 0.55rem 0.6rem;
+  cursor: pointer;
+}
+
+.ht-account-menu-item:hover {
+  background: var(--bg);
+  color: var(--short);
+}
+
+@media (min-width: 860px) {
+  .ht-header {
+    padding: 0.85rem 1.5rem;
+    justify-content: flex-start;
+  }
+
+  .ht-header-title {
+    font-size: 1.1rem;
+    /* ~100px gap before the ticker, which now sits inline on this same line instead of
+       wrapping to its own row below (see .ht-header's mobile-first doc comment). */
+    margin-right: 6.25rem;
+  }
+
+  .ht-price-ticker {
+    order: 2;
+    flex: 0 1 auto;
+  }
+
+  .ht-header-user {
+    order: 3;
+    margin-left: auto;
+  }
+}

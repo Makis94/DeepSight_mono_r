@@ -1,0 +1,25 @@
+{
+  "name": "@hypertracker/hyperliquid-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pino": "^9.5.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@hypertracker/eslint-config": "workspace:*",
+    "@hypertracker/tsconfig": "workspace:*",
+    "@types/ws": "^8.5.13",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2"
+  }
+}

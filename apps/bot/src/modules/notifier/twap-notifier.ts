@@ -1,0 +1,172 @@
+import {
+  activeSubscriptionCondition,
+  events,
+  eventCursors,
+  subscriptions,
+  users,
+  type Database,
+  type ListenClient,
+} from "@hypertracker/db";
+import { NOTIFICATION_CHANNEL, type MarketTwapSuspectedPayload } from "@hypertracker/shared";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
+import type { Bot } from "grammy";
+import type { Logger } from "pino";
+
+// Own row in event_cursors, same reasoning as trade-notifier.ts's CONSUMER.
+const CONSUMER = "bot-notifier-twaps";
+
+type EventRow = typeof events.$inferSelect;
+
+// null means this consumer has never run before — see trade-notifier.ts's getCursor doc
+// comment for why a brand-new consumer must not replay the entire pre-existing
+// market_twap_suspected history (thousands of rows by the time this notifier is first
+// deployed) by defaulting to 0.
+async function getCursor(db: Database): Promise<number | null> {
+  const [row] = await db
+    .select({ lastEventId: eventCursors.lastEventId })
+    .from(eventCursors)
+    .where(eq(eventCursors.consumer, CONSUMER))
+    .limit(1);
+  return row?.lastEventId ?? null;
+}
+
+async function setCursor(db: Database, lastEventId: number): Promise<void> {
+  await db
+    .insert(eventCursors)
+    .values({ consumer: CONSUMER, lastEventId })
+    .onConflictDoUpdate({
+      target: eventCursors.consumer,
+      set: { lastEventId, updatedAt: new Date() },
+    });
+}
+
+// Resolves the starting cursor, seeding a brand-new consumer to the current head instead of
+// leaving `cursor` typed number | null through the rest of startTwapNotifier.
+async function resolveInitialCursor(db: Database): Promise<number> {
+  const existing = await getCursor(db);
+  if (existing !== null) return existing;
+
+  const [head] = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(eq(events.type, "market_twap_suspected"))
+    .orderBy(desc(events.id))
+    .limit(1);
+  const cursor = head?.id ?? 0;
+  await setCursor(db, cursor);
+  return cursor;
+}
+
+function shortAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+// Schema doc (marketTwapSuspectedPayloadSchema) mandates the heuristic/"suspected" nature
+// stay visible wherever this is rendered or notified — the "Likely" in the title carries
+// that on its own now (mirrors apps/web's LikelyTwapsTable heading), so the message body
+// doesn't need to spell it out again.
+function formatTwapMessage(payload: MarketTwapSuspectedPayload, amountUsd: string): string {
+  const amount = Math.round(Number(amountUsd)).toLocaleString("en-US");
+  const sideLabel = payload.side === "buy" ? "🟢 Buy" : "🔴 Sell";
+  return [
+    `🌀 Likely TWAP`,
+    `${sideLabel} ~$${amount} ${payload.coin} across ${payload.occurrences} suborders, avg $${payload.avgPrice}`,
+    `Address: \`${shortAddress(payload.address)}\``,
+  ].join("\n");
+}
+
+async function notifyTwap(bot: Bot, db: Database, logger: Logger, event: EventRow): Promise<void> {
+  const amountUsd = event.amountUsd ?? "0";
+  // Guaranteed by the producer (market-watcher publishEvent, type "market_twap_suspected") —
+  // the caller (processIfNew below) already filtered on event.type before reaching here.
+  const payload = event.payload as MarketTwapSuspectedPayload;
+
+  // Only users with a currently-active subscription/trial ever get notified — see
+  // activeSubscriptionCondition's doc comment (packages/db) for why this re-checks the date
+  // rather than trusting the cached subscriptions.status column.
+  const recipients = await db
+    .select({ telegramId: users.telegramId })
+    .from(users)
+    .innerJoin(subscriptions, eq(subscriptions.telegramId, users.telegramId))
+    .where(
+      and(
+        eq(users.notifyTwaps, true),
+        sql`${users.minTwapAmount}::numeric <= ${amountUsd}::numeric`,
+        activeSubscriptionCondition(),
+      ),
+    );
+
+  const text = formatTwapMessage(payload, amountUsd);
+  for (const recipient of recipients) {
+    try {
+      await bot.api.sendMessage(recipient.telegramId, text, { parse_mode: "Markdown" });
+    } catch (err) {
+      logger.error(
+        { err, telegramId: recipient.telegramId, eventId: event.id },
+        "failed to send twap notification",
+      );
+    }
+  }
+}
+
+// Hard safety cap — see trade-notifier.ts's identical constant doc comment for why this
+// exists (a real incident during development, not a hypothetical).
+const MAX_BACKLOG_REPLAY = 500;
+
+/**
+ * Starts the likely-TWAP notifier: replays anything published while the bot was offline (via
+ * the durable cursor), then listens live on the same Postgres NOTIFY channel the realtime WS
+ * hub uses (apps/api RealtimeHub) — a second, independent consumer of the same event bus, not
+ * a replacement for it. Returns a stop function.
+ */
+export async function startTwapNotifier(
+  bot: Bot,
+  db: Database,
+  listenClient: ListenClient,
+  logger: Logger,
+): Promise<() => Promise<void>> {
+  let cursor = await resolveInitialCursor(db);
+
+  async function processIfNew(row: EventRow): Promise<void> {
+    if (row.type !== "market_twap_suspected") return;
+    // Guards against the catch-up backlog and a live NOTIFY racing on the same event.
+    if (row.id <= cursor) return;
+    await notifyTwap(bot, db, logger, row);
+    cursor = row.id;
+    await setCursor(db, cursor);
+  }
+
+  const backlog = await db
+    .select()
+    .from(events)
+    .where(and(gt(events.id, cursor), eq(events.type, "market_twap_suspected")))
+    .orderBy(asc(events.id));
+  if (backlog.length > MAX_BACKLOG_REPLAY) {
+    const skipped = backlog[backlog.length - 1] as EventRow;
+    logger.error(
+      { cursor, backlogSize: backlog.length, skippedToEventId: skipped.id },
+      "twap notifier backlog exceeded safety cap — skipping to head without notifying, investigate the stale cursor",
+    );
+    cursor = skipped.id;
+    await setCursor(db, cursor);
+  } else {
+    for (const row of backlog) {
+      await processIfNew(row);
+    }
+  }
+
+  await listenClient.listen(NOTIFICATION_CHANNEL, (payload: string) => {
+    void (async () => {
+      const eventId = Number(payload);
+      if (!Number.isFinite(eventId)) return;
+      const [row] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+      if (row) await processIfNew(row);
+    })().catch((err: unknown) => {
+      logger.error({ err }, "unhandled error processing twap notify");
+    });
+  });
+
+  logger.info({ channel: NOTIFICATION_CHANNEL, cursor }, "twap notifier listening");
+
+  return () => listenClient.end();
+}

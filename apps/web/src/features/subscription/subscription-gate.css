@@ -1,0 +1,41 @@
+/* Same centered-column language as .ht-login (theme.css), but scoped to the space below
+   Header rather than the full viewport — Header is still rendered above this. */
+
+.ht-subscription-gate {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.ht-subscription-gate h1 {
+  font-size: 1.3rem;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-shadow:
+    0 0 8px var(--accent-glow),
+    0 0 20px var(--accent-glow);
+}
+
+.ht-subscription-gate p {
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 380px;
+}
+
+.ht-subscription-gate-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 260px;
+}
+
+.ht-subscription-error {
+  font-size: 0.8rem;
+  color: var(--short);
+}

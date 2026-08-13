@@ -1,0 +1,763 @@
+/* Neon/cyberpunk feed screen. Color tokens live in src/theme.css (shared with the header) —
+   this file only adds feed-specific layout plus the glow treatment.
+
+   Mobile-first: every rule below is the narrow-viewport baseline (single column, tables
+   scroll horizontally instead of squeezing 7 columns into ~320px, form stacks). The single
+   breakpoint at the bottom widens things back out for tablet/desktop — nothing above it
+   assumes a wide viewport. */
+
+.ht-page {
+  min-height: 100vh;
+  padding: 0.85rem;
+}
+
+.ht-page h2 {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--accent);
+}
+
+.ht-section {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.85rem;
+  margin-bottom: 1rem;
+  transition: border-color 0.2s ease;
+}
+
+.ht-section:focus-within,
+.ht-section:hover {
+  border-color: var(--accent);
+}
+
+.ht-columns {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ht-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.ht-column > .ht-section:last-child {
+  margin-bottom: 0;
+}
+
+/* Touch targets stay >=44px tall per baseline mobile a11y guidance even though the type
+   scale here is compact — padding carries the hit area, not font-size. */
+.ht-btn {
+  font: inherit;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.65rem 0.9rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+.ht-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.ht-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.ht-btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Sits in the same button row as the amount presets — dashed border marks it as a distinct
+   "opt out entirely" action rather than another amount choice. Reuses --short (see LiveBadge)
+   for the same "this needs attention" red once actually pressed. */
+.ht-btn-off {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+.ht-btn-off[aria-pressed="true"] {
+  border-color: var(--short);
+  border-style: solid;
+  color: var(--short);
+  box-shadow: 0 0 8px rgba(255, 47, 94, 0.35);
+}
+
+.ht-threshold-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ht-coin-filter {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.ht-coin-combobox {
+  position: relative;
+}
+
+.ht-coin-filter .ht-input {
+  width: 100%;
+  min-height: 0;
+  padding: 0.5rem 0.7rem;
+  text-transform: uppercase;
+  box-sizing: border-box;
+}
+
+.ht-coin-dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: 260px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: 0 0 14px var(--accent-glow);
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+
+.ht-coin-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ht-coin-dropdown::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.ht-coin-dropdown-empty {
+  padding: 0.5rem 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.ht-coin-dropdown button {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text);
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+}
+
+.ht-coin-dropdown button:hover,
+.ht-coin-dropdown button.ht-coin-option-active {
+  background: rgba(34, 232, 255, 0.15);
+  color: var(--accent);
+}
+
+.ht-coin-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+}
+
+.ht-coin-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: rgba(34, 232, 255, 0.1);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.25rem 0.3rem 0.25rem 0.6rem;
+}
+
+.ht-coin-tag button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  font: inherit;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.ht-coin-tag button:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.ht-input {
+  font: inherit;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.65rem 0.75rem;
+  min-height: 2.75rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ht-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.ht-section form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* One row per watched wallet. Border/glow/text color come from an inline style per row (see
+   wallet-colors.ts + WatchedWalletsPanel.tsx) so each wallet reads as visually distinct —
+   these var(--accent2) values are only the fallback for the rare case a color didn't resolve. */
+/* Mobile-first: stacked and centered — address+badge on top, action buttons below, both
+   centered as a block. A phone-width row previously kept the address/actions inline via
+   flex-wrap, which left the LIVE badge orphaned wherever it happened to wrap to (see this
+   rule's git history) instead of reading as one balanced card. Row layout with the address
+   on the left and actions flush right only resumes at the wide-desktop breakpoint below. */
+.ht-tracked-wallet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 46, 196, 0.08);
+  border: 1px solid var(--accent2);
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 0 10px var(--accent2-glow);
+}
+
+/* Address + LIVE badge, grouped and centered together so the badge sits right beside the
+   address it belongs to instead of down with the action buttons. */
+.ht-tracked-wallet-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Direct-child combinator, not a descendant selector — this must not also match the nested
+   .ht-addr-short/.ht-addr-full spans inside it, or their own directly-matched color here
+   would win over inheriting the per-wallet inline color set on this parent span (an
+   inherited value only applies when nothing targets the element itself). */
+.ht-tracked-wallet-header > span {
+  color: var(--accent2);
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+/* Toggle + untrack buttons, centered as their own row below the header. */
+.ht-tracked-wallet-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Fixed widths so "Live tracking" vs "Stop live tracking" (different label lengths) don't
+   make rows misaligned — sized to fit the longer label ("Stop live tracking") without
+   wrapping. */
+.ht-btn-toggle {
+  width: 11rem;
+  text-align: center;
+}
+
+.ht-btn-untrack {
+  width: 6rem;
+  text-align: center;
+}
+
+/* Green = clicking this goes live (--long, same token used for "buy"/long-side rows
+   elsewhere — a positive/"go" action), red = clicking this leaves live (--short, same token
+   as LiveBadge's own red and .ht-btn-off's pressed state — a stop/"undo" action). Both stay
+   readable against the row's own per-wallet border color since they only tint text/border,
+   not the button background. */
+.ht-btn-toggle-live {
+  border-color: var(--long);
+  color: var(--long);
+  box-shadow: 0 0 8px rgba(57, 255, 176, 0.35);
+}
+
+.ht-btn-toggle-live:hover:not(:disabled) {
+  box-shadow: 0 0 12px rgba(57, 255, 176, 0.5);
+}
+
+.ht-btn-toggle-stop {
+  border-color: var(--short);
+  color: var(--short);
+  box-shadow: 0 0 8px rgba(255, 47, 94, 0.35);
+}
+
+.ht-btn-toggle-stop:hover:not(:disabled) {
+  box-shadow: 0 0 12px rgba(255, 47, 94, 0.5);
+}
+
+/* "On air" cue for the one wallet on the live (precise) Hyperliquid slot — reuses --short
+   (the red already meaning "close/short" elsewhere) purely for its urgency read, not for its
+   trading semantics. */
+.ht-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--short);
+}
+
+.ht-live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--short);
+  box-shadow: 0 0 6px var(--short);
+  animation: ht-live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes ht-live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ht-live-dot {
+    animation: none;
+  }
+}
+
+.ht-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 3, 12, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 100;
+}
+
+.ht-popup {
+  background: var(--bg-raised);
+  border: 1px solid var(--accent2);
+  border-radius: 8px;
+  box-shadow: 0 0 20px var(--accent2-glow);
+  padding: 1.25rem;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+}
+
+.ht-popup h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: var(--accent2);
+}
+
+.ht-popup p {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.ht-popup .ht-btn {
+  width: 100%;
+}
+
+.ht-addr-full {
+  display: none;
+}
+
+/* On mobile the table is sized to actually fit the viewport width (no min-width, tight
+   padding, secondary columns dropped) rather than scrolling sideways — .ht-table-scroll's
+   overflow-x is a safety net for content that still doesn't fit (e.g. a very long coin
+   symbol), not the primary strategy.
+
+   Vertically, rows are capped at MAX_EVENTS (see FeedPage.tsx) and this container has a
+   fixed max-height with its own scrollbar — without it, a 200-row table would keep pushing
+   the whole page taller forever instead of settling into a scrollable panel. */
+.ht-table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 340px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+
+.ht-table-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ht-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ht-table-scroll::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.ht-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent2);
+  box-shadow: 0 0 8px var(--accent2-glow);
+}
+
+.ht-table-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.ht-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  table-layout: auto;
+}
+
+.ht-table th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  padding: 0 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.ht-table td {
+  padding: 0.4rem 0.3rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Address-column header only (.ht-col-address is applied to the <th>, never the <td> cells —
+   AddressCell/body rows keep their own left alignment) — centered per design request, no
+   longer lined up with AddressCell's emoji slot. */
+.ht-col-address {
+  text-align: center;
+}
+
+/* Every row carries a stable key={event.id} (see FeedPage.tsx), so a CSS animation applied
+   unconditionally here only ever plays when a row's DOM node is first created — React
+   reuses the existing node (same key) for rows that just shift position as newer ones get
+   prepended, and a reused node doesn't replay its animation. This is what makes it correct
+   for bursts: when several events arrive in one WS batch and several new rows land at once,
+   every one of them is a genuinely new node and flashes, not just whichever ends up first. */
+@keyframes ht-row-flash {
+  from {
+    background-color: rgba(34, 232, 255, 0.4);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.ht-table tbody tr {
+  animation: ht-row-flash 1.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ht-table tbody tr {
+    animation: none;
+  }
+}
+
+/* Hidden on mobile to keep every table fully visible without horizontal scroll — shown
+   again once there's room (see breakpoint below). Secondary = useful but not essential for
+   an at-a-glance read: PnL/Price on the whale table, Price/Seller on the large-trades table. */
+.ht-col-secondary {
+  display: none;
+}
+
+.ht-table tr:last-child td {
+  border-bottom: none;
+}
+
+.ht-mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Second identifying cue alongside color (see wallet-emoji.ts) — not itself colored, so it
+   stays legible even when the row's assigned color repeats another wallet's. A fixed rem
+   size (not em) so it reads as clearly "bigger" in table cells too, where the surrounding
+   text (.ht-table td) is as small as 0.72rem — scaling off that would make the emoji tiny
+   right where telling rows apart matters most. Used in the tracker panels (CommonWalletsPanel
+   / PreciseWalletPanel), where every row is a tracked wallet and thus always has one, so
+   there's no alignment gap to reserve for.
+*/
+.ht-wallet-emoji {
+  display: inline-block;
+  margin-right: 0.35rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  vertical-align: middle;
+  transform: translateY(-1px);
+}
+
+/* AddressCell's variant — a fixed-width box rendered on EVERY row (tracked or not), emoji or
+   empty, so the address text always starts at the same x position. Without this, a table
+   mixing tracked (emoji'd) and untracked (bare) addresses in the same column — e.g. Buyer/
+   Seller in Large trades — had its address text jump left/right per row depending on
+   whether that particular address happened to be tracked. */
+.ht-wallet-emoji-slot {
+  display: inline-block;
+  width: 1.5rem;
+  margin-right: 0.15rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  vertical-align: middle;
+  transform: translateY(-1px);
+}
+
+.ht-addr {
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0.3rem 0;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.ht-addr:hover:not(:disabled) {
+  text-shadow: 0 0 6px var(--accent-glow);
+}
+
+.ht-addr:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  text-decoration: none;
+}
+
+.ht-long {
+  color: var(--long);
+  text-shadow: 0 0 6px rgba(57, 255, 176, 0.35);
+}
+
+.ht-short {
+  color: var(--short);
+  text-shadow: 0 0 6px rgba(255, 47, 94, 0.35);
+}
+
+.ht-muted {
+  color: var(--text-muted);
+}
+
+.ht-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.ht-hint {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin: -0.25rem 0 0.75rem;
+}
+
+/* A tracker's activity table nested inside its own management panel (see WhaleActivityTable
+   `bare`) — separated from the wallet list above by a rule instead of its own card border,
+   so the pair reads as one unit rather than two stacked boxes. */
+.ht-subsection {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--border);
+}
+
+.ht-subsection h3 {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+}
+
+/* Wraps a table's h2/h3 together with its collapse toggle — the heading keeps its own
+   margin/border-left styling above, this just removes the bottom margin so the row's own
+   gap takes over. */
+.ht-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ht-table-header h2,
+.ht-table-header h3 {
+  margin-bottom: 0;
+}
+
+.ht-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.ht-collapse-btn:hover {
+  color: var(--accent);
+  background: var(--bg);
+}
+
+.ht-collapse-btn svg {
+  transition: transform 0.2s ease;
+}
+
+/* Down when collapsed (click to expand), up when expanded (click to collapse). */
+.ht-collapse-btn[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+@media (min-width: 860px) {
+  .ht-page {
+    padding: 1.5rem;
+  }
+
+  .ht-section {
+    padding: 1rem;
+  }
+
+  .ht-columns {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1.25rem;
+  }
+
+  .ht-column {
+    flex: 1 1 420px;
+    min-width: 320px;
+  }
+
+  .ht-section form {
+    flex-direction: row;
+  }
+
+  .ht-input {
+    width: auto;
+    flex: 1;
+  }
+
+  .ht-table-scroll {
+    max-height: 520px;
+  }
+
+  .ht-btn {
+    min-height: 0;
+    padding: 0.4rem 0.75rem;
+  }
+
+  .ht-table th {
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    padding: 0 0.6rem 0.5rem;
+  }
+
+  .ht-table td {
+    padding: 0.6rem 0.6rem;
+    font-size: 0.85rem;
+  }
+
+  .ht-col-secondary {
+    display: table-cell;
+  }
+
+}
+
+/* Full (untruncated) address only past external-monitor territory — most laptop screens
+   (even maximized, even 1920px-physical ones under typical OS display scaling) land well
+   under this in effective CSS px, dedicated external monitors typically don't. Truncated
+   below this is also what keeps the tracker row's address + live badge + both fixed-width
+   action buttons reliably fitting on one line. Same breakpoint also resumes the row layout
+   (address+badge on the left, action buttons flush right) for .ht-tracked-wallet — below
+   this it stays centered/stacked (see that rule's own doc comment). */
+@media (min-width: 1600px) {
+  .ht-addr-short {
+    display: none;
+  }
+
+  .ht-addr-full {
+    display: inline;
+  }
+
+  .ht-tracked-wallet {
+    flex-direction: row;
+    justify-content: space-between;
+    text-align: left;
+  }
+
+  .ht-tracked-wallet-header {
+    justify-content: flex-start;
+  }
+
+  .ht-tracked-wallet-actions {
+    justify-content: flex-end;
+    margin-left: auto;
+  }
+}

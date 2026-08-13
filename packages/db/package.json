@@ -1,0 +1,30 @@
+{
+  "name": "@hypertracker/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "tsx ./node_modules/drizzle-kit/bin.cjs generate",
+    "db:migrate": "tsx ./node_modules/drizzle-kit/bin.cjs migrate",
+    "db:studio": "tsx ./node_modules/drizzle-kit/bin.cjs studio"
+  },
+  "dependencies": {
+    "@hypertracker/shared": "workspace:*",
+    "drizzle-orm": "^0.38.3",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@hypertracker/eslint-config": "workspace:*",
+    "@hypertracker/tsconfig": "workspace:*",
+    "dotenv": "^16.4.7",
+    "drizzle-kit": "^0.30.1",
+    "eslint": "^9.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

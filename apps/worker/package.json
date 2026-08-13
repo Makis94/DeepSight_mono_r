@@ -1,0 +1,46 @@
+{
+  "name": "@hypertracker/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n wallet,market,deposit,coins,common,subscription \"pnpm:dev:wallet-watcher\" \"pnpm:dev:market-watcher\" \"pnpm:dev:deposit-watcher\" \"pnpm:dev:coin-registry-sync\" \"pnpm:dev:common-wallet-tracker\" \"pnpm:dev:subscription-watcher\"",
+    "dev:wallet-watcher": "HEARTBEAT_PORT=9101 tsx watch src/wallet-watcher/index.ts",
+    "dev:market-watcher": "HEARTBEAT_PORT=9102 tsx watch src/market-watcher/index.ts",
+    "dev:deposit-watcher": "HEARTBEAT_PORT=9103 tsx watch src/deposit-watcher/index.ts",
+    "dev:coin-registry-sync": "HEARTBEAT_PORT=9104 tsx watch src/coin-registry-sync/index.ts",
+    "dev:common-wallet-tracker": "HEARTBEAT_PORT=9105 tsx watch src/common-wallet-tracker/index.ts",
+    "dev:subscription-watcher": "HEARTBEAT_PORT=9106 tsx watch src/subscription-watcher/index.ts",
+    "build": "tsup",
+    "start:wallet-watcher": "node dist/wallet-watcher/index.js",
+    "start:market-watcher": "node dist/market-watcher/index.js",
+    "start:deposit-watcher": "node dist/deposit-watcher/index.js",
+    "start:coin-registry-sync": "node dist/coin-registry-sync/index.js",
+    "start:common-wallet-tracker": "node dist/common-wallet-tracker/index.js",
+    "start:subscription-watcher": "node dist/subscription-watcher/index.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hypertracker/db": "workspace:*",
+    "@hypertracker/hyperliquid-sdk": "workspace:*",
+    "@hypertracker/shared": "workspace:*",
+    "@noble/hashes": "^2.3.0",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.3",
+    "pino": "^9.5.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@hypertracker/eslint-config": "workspace:*",
+    "@hypertracker/tsconfig": "workspace:*",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.17.0",
+    "pino-pretty": "^13.0.0",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

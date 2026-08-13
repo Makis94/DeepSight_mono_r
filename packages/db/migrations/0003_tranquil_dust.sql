@@ -1,0 +1,2 @@
+ALTER TABLE "watched_wallets" DROP CONSTRAINT "watched_wallets_user_id_unique";--> statement-breakpoint
+ALTER TABLE "watched_wallets" ADD CONSTRAINT "watched_wallets_user_id_address_unique" UNIQUE("user_id","address");
