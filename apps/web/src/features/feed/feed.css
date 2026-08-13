@@ -112,6 +112,107 @@
   border-top: 1px solid var(--border);
 }
 
+.ht-coin-exclusions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.1rem;
+  margin-top: 0.6rem;
+}
+
+.ht-toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Positioning context for the real (visually hidden but still focusable/clickable) checkbox
+   and the painted track beneath it — kept the same size so the input's hit area lines up
+   exactly with what's drawn. */
+.ht-toggle {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 2.15rem;
+  height: 1.2rem;
+}
+
+.ht-toggle input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.ht-toggle input:disabled {
+  cursor: default;
+}
+
+.ht-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ht-toggle-track::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 0.85rem;
+  height: 0.85rem;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transform: translateY(-50%);
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.ht-toggle-row:hover .ht-toggle-track {
+  border-color: var(--short);
+}
+
+.ht-toggle input:checked + .ht-toggle-track {
+  border-color: var(--short);
+  box-shadow: 0 0 8px rgba(255, 47, 94, 0.35);
+}
+
+.ht-toggle input:checked + .ht-toggle-track::before {
+  background: var(--short);
+  transform: translate(0.95rem, -50%);
+  box-shadow: 0 0 6px rgba(255, 47, 94, 0.6);
+}
+
+.ht-toggle input:focus-visible + .ht-toggle-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ht-toggle input:disabled + .ht-toggle-track {
+  opacity: 0.5;
+}
+
+.ht-toggle-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+
+.ht-toggle-label-active {
+  color: var(--short);
+}
+
 .ht-coin-combobox {
   position: relative;
 }
@@ -484,10 +585,21 @@
 }
 
 /* Address-column header only (.ht-col-address is applied to the <th>, never the <td> cells —
-   AddressCell/body rows keep their own left alignment) — centered per design request, no
-   longer lined up with AddressCell's emoji slot. */
-.ht-col-address {
+   AddressCell/body rows keep their own left alignment) — centered per design request. Rows
+   below aren't a bare centered string though: each one is [.ht-wallet-emoji-slot (1.5rem) +
+   0.15rem margin] followed by the address text, so text-align: center alone centers that
+   whole emoji+text block and visually shifts the address text right of true column center.
+   The nudge here (half the reserved emoji-slot width) re-centers "ADDRESS" over where the
+   address text itself actually sits, instead of over the empty emoji gutter.
+
+   Selector is `.ht-table th.ht-col-address`, not just `.ht-col-address`, on purpose: a bare
+   class selector (specificity 0,1,0) loses to `.ht-table th` (0,1,1, both the base rule
+   above and its >=860px media-query override further down) on any property both declare, so
+   text-align/padding here would otherwise silently never apply — this compound selector
+   (0,2,1) outranks both. */
+.ht-table th.ht-col-address {
   text-align: center;
+  padding-left: 0.3rem;
 }
 
 /* Every row carries a stable key={event.id} (see FeedPage.tsx), so a CSS animation applied
@@ -574,14 +686,59 @@
   text-underline-offset: 2px;
 }
 
-.ht-addr:hover:not(:disabled) {
+.ht-addr:hover {
   text-shadow: 0 0 6px var(--accent-glow);
 }
 
-.ht-addr:disabled {
+.ht-addr-cell {
+  display: inline-flex;
+}
+
+/* Inline Copy/Track choice, replacing the address button in place — deliberately not an
+   absolutely-positioned popover: every table row lives inside .ht-table-scroll, which clips
+   both axes (overflow-x AND -y auto, see its own doc comment), so a floating dropdown would
+   get cut off there. Staying in normal flow just widens the row slightly, which the same
+   container's horizontal scroll already exists to absorb. */
+.ht-addr-actions {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.ht-addr-action {
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
   color: var(--text-muted);
+  padding: 0.25rem 0.45rem;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.ht-addr-action:disabled {
+  opacity: 0.5;
   cursor: default;
-  text-decoration: none;
+}
+
+/* Copy borrows --accent (the general "interactive/default" neon, see theme.css) — Track
+   borrows --accent2 (reserved there for "this is the one active thing": the tracked wallet),
+   since a successful click promotes this address to exactly that. */
+.ht-addr-action-copy:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ht-addr-action-track:hover:not(:disabled) {
+  border-color: var(--accent2);
+  color: var(--accent2);
 }
 
 .ht-long {
@@ -640,6 +797,64 @@
 .ht-table-header h2,
 .ht-table-header h3 {
   margin-bottom: 0;
+}
+
+.ht-table-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.ht-clear-all-btn {
+  font: inherit;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.ht-clear-all-btn:hover {
+  color: var(--short);
+  border-color: var(--short);
+}
+
+/* Narrow trailing column on every table, mirroring .ht-col-address's centering — a bare
+   trash icon rather than a labeled button since row count/density here matters more than
+   the action being self-explanatory (aria-label carries that for a11y instead). */
+.ht-col-action {
+  width: 2rem;
+  text-align: center;
+}
+
+.ht-row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.ht-row-delete:hover {
+  color: var(--short);
+  background: var(--bg);
 }
 
 .ht-collapse-btn {
@@ -727,7 +942,6 @@
   .ht-col-secondary {
     display: table-cell;
   }
-
 }
 
 /* Full (untruncated) address only past external-monitor territory — most laptop screens

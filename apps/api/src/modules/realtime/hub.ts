@@ -26,6 +26,11 @@ interface RealtimeClient {
   // in CLAUDE.md and the deposit-monitoring-architecture skill.
   notifyDeposits: boolean;
   minDepositAmount: number;
+  // Same snapshot semantics — applies only to the market_trade/market_twap_suspected
+  // branches below, not to watched-wallet events (see users.excludeBtc/excludeEth doc
+  // comment in packages/db).
+  excludeBtc: boolean;
+  excludeEth: boolean;
   // Heartbeat bookkeeping (see startHeartbeat) — flipped true on every pong, checked and
   // reset false on every heartbeat tick.
   isAlive: boolean;
@@ -39,6 +44,14 @@ interface RealtimeClient {
 // connection classified as active; a client that stops answering pongs gets reaped instead
 // of leaking.
 const HEARTBEAT_INTERVAL_MS = 25_000;
+
+// See users.excludeBtc/excludeEth doc comment (packages/db) — only market_trade/
+// market_twap_suspected fan-out consults this, watched-wallet events never do.
+function isCoinExcluded(client: RealtimeClient, coin: string | null): boolean {
+  if (coin === "BTC") return client.excludeBtc;
+  if (coin === "ETH") return client.excludeEth;
+  return false;
+}
 
 /**
  * One shared LISTEN connection for the whole apps/api process, fanning out to every
@@ -113,6 +126,8 @@ export class RealtimeHub {
         minTwapAmount: users.minTwapAmount,
         notifyDeposits: users.notifyDeposits,
         minDepositAmount: users.minDepositAmount,
+        excludeBtc: users.excludeBtc,
+        excludeEth: users.excludeEth,
       })
       .from(users)
       .where(eq(users.telegramId, telegramId))
@@ -122,12 +137,17 @@ export class RealtimeHub {
       socket,
       telegramId,
       watchedAddresses: new Set(rows.map((row) => row.address.toLowerCase())),
+      // Fallbacks mirror the users table's own column defaults (packages/db/src/schema/
+      // users.ts) — highest preset per threshold, not "0" — for the same theoretical
+      // gap-before-the-row-lands case as settings/routes.ts's toResponse.
       notifyTrades: userRow?.notifyTrades ?? true,
-      minTradeAmount: Number(userRow?.minTradeAmount ?? "0"),
+      minTradeAmount: Number(userRow?.minTradeAmount ?? "1000000"),
       notifyTwaps: userRow?.notifyTwaps ?? true,
-      minTwapAmount: Number(userRow?.minTwapAmount ?? "0"),
+      minTwapAmount: Number(userRow?.minTwapAmount ?? "1000000"),
       notifyDeposits: userRow?.notifyDeposits ?? true,
-      minDepositAmount: Number(userRow?.minDepositAmount ?? "0"),
+      minDepositAmount: Number(userRow?.minDepositAmount ?? "2000000"),
+      excludeBtc: userRow?.excludeBtc ?? false,
+      excludeEth: userRow?.excludeEth ?? false,
       isAlive: true,
     };
     socket.on("pong", () => {
@@ -156,6 +176,7 @@ export class RealtimeHub {
       for (const client of this.clients) {
         if (!client.notifyTrades) continue;
         if (notionalUsd < client.minTradeAmount) continue;
+        if (isCoinExcluded(client, event.coin)) continue;
         if (client.socket.readyState !== client.socket.OPEN) continue;
         this.send(client, event);
       }
@@ -169,6 +190,7 @@ export class RealtimeHub {
       for (const client of this.clients) {
         if (!client.notifyTwaps) continue;
         if (notionalUsd < client.minTwapAmount) continue;
+        if (isCoinExcluded(client, event.coin)) continue;
         if (client.socket.readyState !== client.socket.OPEN) continue;
         this.send(client, event);
       }

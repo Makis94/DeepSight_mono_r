@@ -4,6 +4,7 @@ import type { RealtimeEvent } from "../../../lib/realtime-client.js";
 import { isGlobalDeposit, rowTint } from "../lib/activity.js";
 import { AddressCell } from "./AddressCell.js";
 import { CollapsibleHeading } from "./CollapsibleHeading.js";
+import { RowDeleteButton } from "./RowDeleteButton.js";
 
 interface DepositsTableProps {
   // Renders without its own card/heading chrome — used when nested inside
@@ -35,9 +36,13 @@ export function DepositsTable({
   onTrack,
 }: DepositsTableProps) {
   const [collapsed, setCollapsed] = useState(false);
+  // Visual-only dismissal — hides rows from this table's own view without touching stored
+  // events, the realtime feed, or any server-side alert setting (see RowDeleteButton doc).
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
+  const visibleEvents = events.filter((event) => !dismissedIds.has(event.id));
   const maxAmount = Math.max(
     0,
-    ...events.map((event) => (event.amountUsd ? Math.abs(Number(event.amountUsd)) : 0)),
+    ...visibleEvents.map((event) => (event.amountUsd ? Math.abs(Number(event.amountUsd)) : 0)),
   );
   const Wrapper = bare ? "div" : "section";
 
@@ -48,12 +53,20 @@ export function DepositsTable({
         title="Deposits"
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
+        onClearAll={
+          visibleEvents.length > 0
+            ? () =>
+                setDismissedIds(
+                  (prev) => new Set([...prev, ...visibleEvents.map((event) => event.id)]),
+                )
+            : undefined
+        }
       />
       {!collapsed && !enabled && <p className="ht-empty">Notifications are off.</p>}
-      {!collapsed && enabled && events.length === 0 && (
+      {!collapsed && enabled && visibleEvents.length === 0 && (
         <p className="ht-empty">Waiting for events…</p>
       )}
-      {!collapsed && enabled && events.length > 0 && (
+      {!collapsed && enabled && visibleEvents.length > 0 && (
         <div className="ht-table-scroll">
           <table className="ht-table">
             <thead>
@@ -62,10 +75,11 @@ export function DepositsTable({
                 <th>Amount</th>
                 <th className="ht-col-secondary">Tx</th>
                 <th>Time</th>
+                <th className="ht-col-action"></th>
               </tr>
             </thead>
             <tbody>
-              {events.map((event) => (
+              {visibleEvents.map((event) => (
                 <tr key={event.id} style={rowTint("long", event.amountUsd, maxAmount)}>
                   <td>
                     {isGlobalDeposit(event.payload) && (
@@ -91,6 +105,12 @@ export function DepositsTable({
                     {isGlobalDeposit(event.payload) ? truncateAddress(event.payload.txHash) : "—"}
                   </td>
                   <td className="ht-muted">{formatTime(event.occurredAt)}</td>
+                  <td className="ht-col-action">
+                    <RowDeleteButton
+                      label="Dismiss row"
+                      onClick={() => setDismissedIds((prev) => new Set(prev).add(event.id))}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -84,17 +84,21 @@ async function notifyTwap(bot: Bot, db: Database, logger: Logger, event: EventRo
   // Only users with a currently-active subscription/trial ever get notified — see
   // activeSubscriptionCondition's doc comment (packages/db) for why this re-checks the date
   // rather than trusting the cached subscriptions.status column.
+  const conditions = [
+    eq(users.notifyTwaps, true),
+    sql`${users.minTwapAmount}::numeric <= ${amountUsd}::numeric`,
+    activeSubscriptionCondition(),
+  ];
+  // See users.excludeBtc/excludeEth doc comment (packages/db) — skips users who opted out of
+  // this specific coin, so the push never goes out at all rather than being sent and ignored.
+  if (payload.coin === "BTC") conditions.push(eq(users.excludeBtc, false));
+  if (payload.coin === "ETH") conditions.push(eq(users.excludeEth, false));
+
   const recipients = await db
     .select({ telegramId: users.telegramId })
     .from(users)
     .innerJoin(subscriptions, eq(subscriptions.telegramId, users.telegramId))
-    .where(
-      and(
-        eq(users.notifyTwaps, true),
-        sql`${users.minTwapAmount}::numeric <= ${amountUsd}::numeric`,
-        activeSubscriptionCondition(),
-      ),
-    );
+    .where(and(...conditions));
 
   const text = formatTwapMessage(payload, amountUsd);
   for (const recipient of recipients) {

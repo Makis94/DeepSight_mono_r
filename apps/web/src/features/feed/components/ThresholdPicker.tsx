@@ -1,5 +1,6 @@
 import { TRADE_THRESHOLD_PRESETS } from "@hypertracker/shared/schemas/settings";
 import type { RealtimeEvent } from "../../../lib/realtime-client.js";
+import { CoinExclusionToggle } from "./CoinExclusionToggle.js";
 import { CoinFilter } from "./CoinFilter.js";
 import { TopTradesTable } from "./TopTradesTable.js";
 
@@ -16,6 +17,13 @@ interface ThresholdPickerProps {
   selectedCoins: string[];
   onAddCoin: (coin: string) => void;
   onRemoveCoin: (coin: string) => void;
+  // Shared BTC/ETH exclusion setting (users.excludeBtc/excludeEth) — also surfaced on
+  // TwapThresholdPicker, since it's one user-level setting feeding both feeds.
+  excludeBtc: boolean;
+  excludeEth: boolean;
+  isUpdatingCoinExclusions: boolean;
+  onToggleExcludeBtc: (value: boolean) => void;
+  onToggleExcludeEth: (value: boolean) => void;
   // This threshold's own matching-trades feed, rendered nested at the bottom of this same
   // card via TopTradesTable's `bare` mode (see WhaleActivityTable for the same pattern).
   events: RealtimeEvent[];
@@ -36,6 +44,11 @@ export function ThresholdPicker({
   selectedCoins,
   onAddCoin,
   onRemoveCoin,
+  excludeBtc,
+  excludeEth,
+  isUpdatingCoinExclusions,
+  onToggleExcludeBtc,
+  onToggleExcludeEth,
   events,
   walletColors,
   walletEmojis,
@@ -75,6 +88,13 @@ export function ThresholdPicker({
         selected={selectedCoins}
         onAdd={onAddCoin}
         onRemove={onRemoveCoin}
+      />
+      <CoinExclusionToggle
+        excludeBtc={excludeBtc}
+        excludeEth={excludeEth}
+        isUpdating={isUpdatingCoinExclusions}
+        onToggleBtc={onToggleExcludeBtc}
+        onToggleEth={onToggleExcludeEth}
       />
       <TopTradesTable
         bare

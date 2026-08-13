@@ -8,6 +8,7 @@ import {
   promoteToPrecise,
   trackWallet,
   untrackWallet,
+  updateCoinExclusions,
   updateDepositThreshold,
   updateTradeThreshold,
   updateTwapThreshold,
@@ -63,6 +64,11 @@ export function FeedPage({ token }: FeedPageProps) {
   const [minDepositAmount, setMinDepositAmount] = useState<string | null>(null);
   const [notifyDeposits, setNotifyDeposits] = useState(true);
   const [isUpdatingDepositThreshold, setIsUpdatingDepositThreshold] = useState(false);
+  // Shared BTC/ETH exclusion setting (users.excludeBtc/excludeEth) — feeds both the Large
+  // trades and Likely TWAPs cards, not one per table (see CoinExclusionToggle doc comment).
+  const [excludeBtc, setExcludeBtc] = useState(false);
+  const [excludeEth, setExcludeEth] = useState(false);
+  const [isUpdatingCoinExclusions, setIsUpdatingCoinExclusions] = useState(false);
   const [trackingAddress, setTrackingAddress] = useState<string | null>(null);
   const [untrackingAddress, setUntrackingAddress] = useState<string | null>(null);
   const [togglingWalletId, setTogglingWalletId] = useState<number | null>(null);
@@ -116,6 +122,8 @@ export function FeedPage({ token }: FeedPageProps) {
         setNotifyTwaps(settings.notifyTwaps);
         setMinDepositAmount(settings.minDepositAmount);
         setNotifyDeposits(settings.notifyDeposits);
+        setExcludeBtc(settings.excludeBtc);
+        setExcludeEth(settings.excludeEth);
       })
       .catch((err: unknown) => {
         console.error("failed to load settings", err);
@@ -336,6 +344,34 @@ export function FeedPage({ token }: FeedPageProps) {
     }
   }
 
+  // Same "bump reconnectKey so the WS hub re-snapshots" reasoning as the threshold handlers
+  // above — RealtimeHub reads excludeBtc/excludeEth once at connect time (see hub.ts).
+  async function handleToggleExcludeBtc(value: boolean): Promise<void> {
+    setIsUpdatingCoinExclusions(true);
+    try {
+      const settings = await updateCoinExclusions(token, { excludeBtc: value });
+      setExcludeBtc(settings.excludeBtc);
+      setReconnectKey((key) => key + 1);
+    } catch (err) {
+      console.error("failed to update BTC exclusion", err);
+    } finally {
+      setIsUpdatingCoinExclusions(false);
+    }
+  }
+
+  async function handleToggleExcludeEth(value: boolean): Promise<void> {
+    setIsUpdatingCoinExclusions(true);
+    try {
+      const settings = await updateCoinExclusions(token, { excludeEth: value });
+      setExcludeEth(settings.excludeEth);
+      setReconnectKey((key) => key + 1);
+    } catch (err) {
+      console.error("failed to update ETH exclusion", err);
+    } finally {
+      setIsUpdatingCoinExclusions(false);
+    }
+  }
+
   const trackedAddresses = new Set(wallets.map((w) => w.address.toLowerCase()));
   // Only real custom labels go in here — falling back to the full address as a "label"
   // would defeat AddressCell's own truncateAddress(address) fallback (label ?? truncated),
@@ -365,10 +401,20 @@ export function FeedPage({ token }: FeedPageProps) {
     ? whaleEvents.filter((event) => event.walletAddress?.toLowerCase() === preciseAddress)
     : [];
   const pseudoWhaleEvents = whaleEvents;
-  const filteredMarketEvents =
-    selectedCoins.length === 0
-      ? marketEvents
-      : marketEvents.filter((event) => event.coin !== null && selectedCoins.includes(event.coin));
+  // Applied on top of already-buffered/backfilled events (not just newly-pushed ones) so
+  // toggling a checkbox takes effect immediately, without waiting for the next WS reconnect —
+  // the server-side filters (RealtimeHub, bot notifiers) are what actually stop future
+  // pushes/messages; this is belt-and-suspenders for what's already in state.
+  function isCoinExcludedByUser(coin: string | null): boolean {
+    return (coin === "BTC" && excludeBtc) || (coin === "ETH" && excludeEth);
+  }
+  const filteredMarketEvents = marketEvents
+    .filter(
+      (event) =>
+        selectedCoins.length === 0 || (event.coin !== null && selectedCoins.includes(event.coin)),
+    )
+    .filter((event) => !isCoinExcludedByUser(event.coin));
+  const filteredTwapEvents = twapEvents.filter((event) => !isCoinExcludedByUser(event.coin));
 
   return (
     <main className="ht-page">
@@ -427,6 +473,11 @@ export function FeedPage({ token }: FeedPageProps) {
             selectedCoins={selectedCoins}
             onAddCoin={(coin) => setSelectedCoins((prev) => [...prev, coin])}
             onRemoveCoin={(coin) => setSelectedCoins((prev) => prev.filter((c) => c !== coin))}
+            excludeBtc={excludeBtc}
+            excludeEth={excludeEth}
+            isUpdatingCoinExclusions={isUpdatingCoinExclusions}
+            onToggleExcludeBtc={(value) => void handleToggleExcludeBtc(value)}
+            onToggleExcludeEth={(value) => void handleToggleExcludeEth(value)}
             events={filteredMarketEvents}
             walletColors={walletColors}
             walletEmojis={walletEmojis}
@@ -440,7 +491,12 @@ export function FeedPage({ token }: FeedPageProps) {
             isUpdating={isUpdatingTwapThreshold}
             onSelect={(preset) => void handleSelectTwapThreshold(preset)}
             onToggleOff={() => void handleToggleTwapNotify()}
-            events={twapEvents}
+            excludeBtc={excludeBtc}
+            excludeEth={excludeEth}
+            isUpdatingCoinExclusions={isUpdatingCoinExclusions}
+            onToggleExcludeBtc={(value) => void handleToggleExcludeBtc(value)}
+            onToggleExcludeEth={(value) => void handleToggleExcludeEth(value)}
+            events={filteredTwapEvents}
             walletColors={walletColors}
             walletEmojis={walletEmojis}
             trackedAddresses={trackedAddresses}

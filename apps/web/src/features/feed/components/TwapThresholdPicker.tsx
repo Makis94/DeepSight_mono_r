@@ -1,5 +1,6 @@
 import { TWAP_THRESHOLD_PRESETS } from "@hypertracker/shared/schemas/settings";
 import type { RealtimeEvent } from "../../../lib/realtime-client.js";
+import { CoinExclusionToggle } from "./CoinExclusionToggle.js";
 import { LikelyTwapsTable } from "./LikelyTwapsTable.js";
 
 interface TwapThresholdPickerProps {
@@ -10,6 +11,13 @@ interface TwapThresholdPickerProps {
   isUpdating: boolean;
   onSelect: (preset: string) => void;
   onToggleOff: () => void;
+  // Shared BTC/ETH exclusion setting (users.excludeBtc/excludeEth) — also surfaced on
+  // ThresholdPicker, since it's one user-level setting feeding both feeds.
+  excludeBtc: boolean;
+  excludeEth: boolean;
+  isUpdatingCoinExclusions: boolean;
+  onToggleExcludeBtc: (value: boolean) => void;
+  onToggleExcludeEth: (value: boolean) => void;
   // This threshold's own matching-TWAPs feed, rendered nested at the bottom of this same
   // card via LikelyTwapsTable's `bare` mode (see WhaleActivityTable for the same pattern).
   events: RealtimeEvent[];
@@ -26,6 +34,11 @@ export function TwapThresholdPicker({
   isUpdating,
   onSelect,
   onToggleOff,
+  excludeBtc,
+  excludeEth,
+  isUpdatingCoinExclusions,
+  onToggleExcludeBtc,
+  onToggleExcludeEth,
   events,
   walletColors,
   walletEmojis,
@@ -60,6 +73,13 @@ export function TwapThresholdPicker({
           </button>
         ))}
       </div>
+      <CoinExclusionToggle
+        excludeBtc={excludeBtc}
+        excludeEth={excludeEth}
+        isUpdating={isUpdatingCoinExclusions}
+        onToggleBtc={onToggleExcludeBtc}
+        onToggleEth={onToggleExcludeEth}
+      />
       <LikelyTwapsTable
         bare
         enabled={enabled}

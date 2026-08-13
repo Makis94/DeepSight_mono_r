@@ -4,6 +4,7 @@ import type { RealtimeEvent } from "../../../lib/realtime-client.js";
 import { isMarketTwapSuspected, rowTint } from "../lib/activity.js";
 import { AddressCell } from "./AddressCell.js";
 import { CollapsibleHeading } from "./CollapsibleHeading.js";
+import { RowDeleteButton } from "./RowDeleteButton.js";
 
 interface LikelyTwapsTableProps {
   // Renders without its own card/heading chrome — used when nested inside
@@ -38,9 +39,13 @@ export function LikelyTwapsTable({
   onTrack,
 }: LikelyTwapsTableProps) {
   const [collapsed, setCollapsed] = useState(false);
+  // Visual-only dismissal — hides rows from this table's own view without touching stored
+  // events, the realtime feed, or any server-side alert setting (see RowDeleteButton doc).
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
+  const visibleEvents = events.filter((event) => !dismissedIds.has(event.id));
   const maxAmount = Math.max(
     0,
-    ...events.map((event) => (event.amountUsd ? Math.abs(Number(event.amountUsd)) : 0)),
+    ...visibleEvents.map((event) => (event.amountUsd ? Math.abs(Number(event.amountUsd)) : 0)),
   );
   const Wrapper = bare ? "div" : "section";
 
@@ -51,6 +56,14 @@ export function LikelyTwapsTable({
         title="Likely TWAPs"
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
+        onClearAll={
+          visibleEvents.length > 0
+            ? () =>
+                setDismissedIds(
+                  (prev) => new Set([...prev, ...visibleEvents.map((event) => event.id)]),
+                )
+            : undefined
+        }
       />
       {!collapsed && enabled && (
         <p className="ht-muted">
@@ -58,10 +71,10 @@ export function LikelyTwapsTable({
         </p>
       )}
       {!collapsed && !enabled && <p className="ht-empty">Notifications are off.</p>}
-      {!collapsed && enabled && events.length === 0 && (
+      {!collapsed && enabled && visibleEvents.length === 0 && (
         <p className="ht-empty">Waiting for events…</p>
       )}
-      {!collapsed && enabled && events.length > 0 && (
+      {!collapsed && enabled && visibleEvents.length > 0 && (
         <div className="ht-table-scroll">
           <table className="ht-table">
             <thead>
@@ -73,10 +86,11 @@ export function LikelyTwapsTable({
                 <th className="ht-col-address">Address</th>
                 <th className="ht-col-secondary">Suborders</th>
                 <th>Last seen</th>
+                <th className="ht-col-action"></th>
               </tr>
             </thead>
             <tbody>
-              {events.map((event) => (
+              {visibleEvents.map((event) => (
                 <tr
                   key={event.id}
                   style={rowTint(
@@ -109,6 +123,12 @@ export function LikelyTwapsTable({
                     {isMarketTwapSuspected(event.payload) ? event.payload.occurrences : "—"}
                   </td>
                   <td className="ht-muted">{formatTime(event.occurredAt)}</td>
+                  <td className="ht-col-action">
+                    <RowDeleteButton
+                      label="Dismiss row"
+                      onClick={() => setDismissedIds((prev) => new Set(prev).add(event.id))}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

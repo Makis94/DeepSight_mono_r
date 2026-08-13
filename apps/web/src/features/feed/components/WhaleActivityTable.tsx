@@ -4,6 +4,7 @@ import type { RealtimeEvent } from "../../../lib/realtime-client.js";
 import { getActivity, hasPositionFields, rowTint, toneClass } from "../lib/activity.js";
 import { AddressCell } from "./AddressCell.js";
 import { CollapsibleHeading } from "./CollapsibleHeading.js";
+import { RowDeleteButton } from "./RowDeleteButton.js";
 
 interface WhaleActivityTableProps {
   // Reused as-is for the live-tracker wallet's own activity feed (see FeedPage) — same
@@ -34,9 +35,13 @@ export function WhaleActivityTable({
   onTrack,
 }: WhaleActivityTableProps) {
   const [collapsed, setCollapsed] = useState(false);
+  // Visual-only dismissal — hides rows from this table's own view without touching stored
+  // events, the realtime feed, or any server-side alert setting (see RowDeleteButton doc).
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
+  const visibleEvents = events.filter((event) => !dismissedIds.has(event.id));
   const maxAmount = Math.max(
     0,
-    ...events.map((event) => (event.amountUsd ? Math.abs(Number(event.amountUsd)) : 0)),
+    ...visibleEvents.map((event) => (event.amountUsd ? Math.abs(Number(event.amountUsd)) : 0)),
   );
   const Wrapper = bare ? "div" : "section";
 
@@ -47,9 +52,17 @@ export function WhaleActivityTable({
         title={title}
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
+        onClearAll={
+          visibleEvents.length > 0
+            ? () =>
+                setDismissedIds(
+                  (prev) => new Set([...prev, ...visibleEvents.map((event) => event.id)]),
+                )
+            : undefined
+        }
       />
-      {!collapsed && events.length === 0 && <p className="ht-empty">Waiting for events…</p>}
-      {!collapsed && events.length > 0 && (
+      {!collapsed && visibleEvents.length === 0 && <p className="ht-empty">Waiting for events…</p>}
+      {!collapsed && visibleEvents.length > 0 && (
         <div className="ht-table-scroll">
           <table className="ht-table">
             <thead>
@@ -62,10 +75,11 @@ export function WhaleActivityTable({
                 <th className="ht-col-secondary">PnL</th>
                 <th className="ht-col-secondary">Price</th>
                 <th>Time</th>
+                <th className="ht-col-action"></th>
               </tr>
             </thead>
             <tbody>
-              {events.map((event) => {
+              {visibleEvents.map((event) => {
                 const activity = getActivity(event);
                 const address = event.walletAddress;
                 return (
@@ -80,6 +94,7 @@ export function WhaleActivityTable({
                           onTrack={onTrack}
                           color={walletColors.get(address.toLowerCase())}
                           emoji={walletEmojis.get(address.toLowerCase())}
+                          variant="copy"
                         />
                       ) : (
                         "—"
@@ -128,6 +143,12 @@ export function WhaleActivityTable({
                       {hasPositionFields(event.payload) ? formatPrice(event.payload.price) : "—"}
                     </td>
                     <td className="ht-muted">{formatTime(event.occurredAt)}</td>
+                    <td className="ht-col-action">
+                      <RowDeleteButton
+                        label="Dismiss row"
+                        onClick={() => setDismissedIds((prev) => new Set(prev).add(event.id))}
+                      />
+                    </td>
                   </tr>
                 );
               })}

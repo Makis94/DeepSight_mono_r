@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { truncateAddress } from "../../../lib/format.js";
 
 interface AddressCellProps {
@@ -15,6 +16,17 @@ interface AddressCellProps {
   // any table row (Large trades, Likely TWAPs, Deposits, whale activity), not just the
   // tracker panel where it's assigned.
   emoji?: string | undefined;
+  // "menu" (default) — click reveals an inline Copy/Track choice, used on the market-wide
+  // tables (Large trades, Likely TWAPs, Deposits) where a row's address is very likely new.
+  // "copy" — click copies straight away, used on the whale-activity tables: every row there
+  // is already a tracked wallet by construction (RealtimeHub only ever forwards wallet-tied
+  // events for addresses this user already watches), so a "Track" choice would never do
+  // anything.
+  variant?: "menu" | "copy";
+}
+
+async function copyAddress(address: string): Promise<void> {
+  await navigator.clipboard.writeText(address);
 }
 
 export function AddressCell({
@@ -25,23 +37,90 @@ export function AddressCell({
   onTrack,
   color,
   emoji,
+  variant = "menu",
 }: AddressCellProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [justCopied, setJustCopied] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Closes the inline Copy/Track choice on an outside click — same pattern as CoinFilter's
+  // dropdown.
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    function handlePointerDown(e: MouseEvent): void {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isMenuOpen]);
+
+  function handleCopy(): void {
+    copyAddress(address)
+      .then(() => {
+        setJustCopied(true);
+        setIsMenuOpen(false);
+        setTimeout(() => setJustCopied(false), 1200);
+      })
+      .catch((err: unknown) => {
+        console.error("failed to copy address", err);
+      });
+  }
+
+  const emojiSlot = (
+    <span className="ht-wallet-emoji-slot" aria-hidden="true">
+      {isTracked && emoji ? emoji : null}
+    </span>
+  );
+  const displayLabel = justCopied ? "Copied!" : (label ?? truncateAddress(address));
+
+  if (variant === "copy") {
+    return (
+      <button
+        type="button"
+        className="ht-addr"
+        title={justCopied ? "Copied!" : `Copy ${address}`}
+        onClick={handleCopy}
+        style={color ? { color } : undefined}
+      >
+        {emojiSlot}
+        {displayLabel}
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      className="ht-addr"
-      disabled={isTracked || isTracking}
-      title={isTracked ? address : `Track ${address}`}
-      onClick={() => onTrack(address)}
-      style={isTracked && color ? { color } : undefined}
-    >
-      {/* Fixed-width slot rendered for every row, emoji or not — otherwise rows with a
-          tracked (emoji'd) address push their text right of untracked rows, so the address
-          column no longer lines up (see feed.css .ht-wallet-emoji-slot). */}
-      <span className="ht-wallet-emoji-slot" aria-hidden="true">
-        {isTracked && emoji ? emoji : null}
-      </span>
-      {label ?? truncateAddress(address)}
-    </button>
+    <div className="ht-addr-cell" ref={rootRef}>
+      {!isMenuOpen ? (
+        <button
+          type="button"
+          className="ht-addr"
+          title={address}
+          onClick={() => setIsMenuOpen(true)}
+          style={isTracked && color ? { color } : undefined}
+        >
+          {emojiSlot}
+          {displayLabel}
+        </button>
+      ) : (
+        <span className="ht-addr-actions">
+          <button type="button" className="ht-addr-action ht-addr-action-copy" onClick={handleCopy}>
+            Copy
+          </button>
+          <button
+            type="button"
+            className="ht-addr-action ht-addr-action-track"
+            disabled={isTracked || isTracking}
+            onClick={() => {
+              onTrack(address);
+              setIsMenuOpen(false);
+            }}
+          >
+            {isTracked ? "Tracked" : isTracking ? "…" : "Track"}
+          </button>
+        </span>
+      )}
+    </div>
   );
 }

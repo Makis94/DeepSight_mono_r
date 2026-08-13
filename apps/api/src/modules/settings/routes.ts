@@ -1,5 +1,6 @@
 import { users, type Database } from "@hypertracker/db";
 import {
+  updateCoinExclusionBodySchema,
   updateDepositThresholdBodySchema,
   updateTradeThresholdBodySchema,
   updateTwapThresholdBodySchema,
@@ -16,19 +17,24 @@ const SETTINGS_COLUMNS = {
   notifyTwaps: users.notifyTwaps,
   minDepositAmount: users.minDepositAmount,
   notifyDeposits: users.notifyDeposits,
+  excludeBtc: users.excludeBtc,
+  excludeEth: users.excludeEth,
 };
 
 // ensureUserRow (see apps/api auth/routes.ts) guarantees a row exists once a session token
 // has been issued — these defaults only matter for the theoretical gap between issuing a
-// token and that row landing, not the common case.
+// token and that row landing, not the common case. Mirror the users table's own column
+// defaults (packages/db/src/schema/users.ts) — highest preset per threshold, not "0".
 function toResponse(row: Partial<SettingsResponse> | undefined): SettingsResponse {
   return {
-    minTradeAmount: row?.minTradeAmount ?? "0",
+    minTradeAmount: row?.minTradeAmount ?? "1000000",
     notifyTrades: row?.notifyTrades ?? true,
-    minTwapAmount: row?.minTwapAmount ?? "0",
+    minTwapAmount: row?.minTwapAmount ?? "1000000",
     notifyTwaps: row?.notifyTwaps ?? true,
-    minDepositAmount: row?.minDepositAmount ?? "0",
+    minDepositAmount: row?.minDepositAmount ?? "2000000",
     notifyDeposits: row?.notifyDeposits ?? true,
+    excludeBtc: row?.excludeBtc ?? false,
+    excludeEth: row?.excludeEth ?? false,
   };
 }
 
@@ -107,6 +113,28 @@ export function settingsRoutes(app: FastifyInstance, db: Database): void {
           minDepositAmount: body.data.minDepositAmount,
         }),
         ...(body.data.notifyDeposits !== undefined && { notifyDeposits: body.data.notifyDeposits }),
+      })
+      .where(eq(users.telegramId, session.telegramId))
+      .returning(SETTINGS_COLUMNS);
+
+    return toResponse(updated);
+  });
+
+  app.patch("/settings/coin-exclusions", async (request, reply) => {
+    const session = await requireActiveSubscription(request, reply, db);
+    if (!session) return;
+
+    const body = updateCoinExclusionBodySchema.safeParse(request.body);
+    if (!body.success) {
+      await reply.status(400).send({ error: "invalid coin exclusion settings" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(users)
+      .set({
+        ...(body.data.excludeBtc !== undefined && { excludeBtc: body.data.excludeBtc }),
+        ...(body.data.excludeEth !== undefined && { excludeEth: body.data.excludeEth }),
       })
       .where(eq(users.telegramId, session.telegramId))
       .returning(SETTINGS_COLUMNS);

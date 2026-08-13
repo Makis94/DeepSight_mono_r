@@ -250,6 +250,31 @@ export async function updateTwapThreshold(
   return (await response.json()) as Settings;
 }
 
+// Shared across the Large trades and Likely TWAPs tables — see users.excludeBtc/excludeEth
+// doc comment (packages/db) for why this is one setting, not two per-table toggles.
+export async function updateCoinExclusions(
+  token: string,
+  { excludeBtc, excludeEth }: { excludeBtc?: boolean; excludeEth?: boolean },
+): Promise<Settings> {
+  const response = await fetch(`${API_URL}/settings/coin-exclusions`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...NGROK_SKIP_WARNING_HEADERS,
+    },
+    body: JSON.stringify({
+      ...(excludeBtc !== undefined && { excludeBtc }),
+      ...(excludeEth !== undefined && { excludeEth }),
+    }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `failed to update coin exclusions: ${response.status}`);
+  }
+  return (await response.json()) as Settings;
+}
+
 export async function getSubscription(token: string): Promise<SubscriptionResponse> {
   const response = await fetch(`${API_URL}/subscription`, {
     headers: { Authorization: `Bearer ${token}`, ...NGROK_SKIP_WARNING_HEADERS },
