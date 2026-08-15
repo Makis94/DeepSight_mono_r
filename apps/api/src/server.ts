@@ -31,7 +31,23 @@ export async function buildServer() {
     hub.stop();
   });
 
-  await app.register(cors);
+  // Single registration for the whole app — @fastify/cors decorates the shared
+  // Request/Reply prototypes, so registering it a second time (even in an encapsulated
+  // child context) throws FST_ERR_DEC_ALREADY_PRESENT. A per-request delegator lets
+  // /admin/* get its own credentialed, single-origin CORS policy while every other route
+  // keeps the permissive reflect-any-origin, no-credentials default.
+  await app.register(cors, {
+    // Wrapped in { delegator } rather than passed as a bare function — avvio treats a
+    // bare function `options` argument as an (server) => options factory evaluated once
+    // at registration time, not a per-request resolver (see @fastify/cors's own
+    // `opts.delegator` branch, which is how it distinguishes the two).
+    delegator: (req, callback) => {
+      const corsOptions = req.url.startsWith("/admin")
+        ? { origin: env.ADMIN_ORIGIN, credentials: true }
+        : { origin: true };
+      callback(null, corsOptions);
+    },
+  });
   await app.register(websocket);
   await app.register(healthRoutes);
   await app.register((instance) => {
@@ -55,11 +71,9 @@ export async function buildServer() {
   await app.register((instance) => {
     realtimeRoutes(instance, hub);
   });
-  // Own encapsulated context: admin auth is cookie-based, so its CORS must allow credentials
-  // for one specific allowlisted origin — unlike the permissive reflect-any-origin default
-  // `cors` above, which never sends credentials and would be unsafe to combine with them.
+  // Own encapsulated context: admin auth is cookie-based (CORS handled by the delegator
+  // above, keyed on the /admin path prefix).
   await app.register(async (instance) => {
-    await instance.register(cors, { origin: env.ADMIN_ORIGIN, credentials: true });
     await instance.register(cookie);
     adminRoutes(instance, db);
   });

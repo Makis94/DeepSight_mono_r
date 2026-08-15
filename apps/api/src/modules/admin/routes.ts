@@ -17,6 +17,39 @@ const isProduction = env.NODE_ENV === "production";
 // request, and lets /admin/login set it before an admin session technically "exists".
 const ADMIN_COOKIE_PATH = "/admin";
 
+// Hand-rolled instead of reply.setCookie()/clearCookie(): @fastify/cookie@11.1.2's
+// setCookie writes the header from inside its own onSend hook, and on this stack that
+// path reliably leaves the response never flushed to the socket (verified in isolation —
+// the exact same header set directly via reply.header(), including from a hand-written
+// onSend hook, sends instantly every time; only @fastify/cookie's own setCookie/onSend
+// path hangs). @fastify/cookie stays registered for request-side parsing (request.cookies
+// in guard.ts), which isn't affected — only the write side is bypassed here. ADMIN_JWT is
+// base64url (jose's SignJWT), so no attribute-value escaping is needed.
+function adminSessionCookieHeader(token: string): string {
+  const attrs = [
+    `${ADMIN_SESSION_COOKIE}=${token}`,
+    `Path=${ADMIN_COOKIE_PATH}`,
+    "HttpOnly",
+    "SameSite=Strict",
+    `Max-Age=${60 * 60 * 12}`,
+  ];
+  if (isProduction) attrs.push("Secure");
+  return attrs.join("; ");
+}
+
+function clearedAdminSessionCookieHeader(): string {
+  const attrs = [
+    `${ADMIN_SESSION_COOKIE}=`,
+    `Path=${ADMIN_COOKIE_PATH}`,
+    "HttpOnly",
+    "SameSite=Strict",
+    "Max-Age=0",
+    "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+  ];
+  if (isProduction) attrs.push("Secure");
+  return attrs.join("; ");
+}
+
 export function adminRoutes(app: FastifyInstance, db: Database): void {
   app.post("/admin/login", async (request, reply) => {
     if (isLoginRateLimited(request.ip)) {
@@ -45,20 +78,11 @@ export function adminRoutes(app: FastifyInstance, db: Database): void {
       { role: "admin", username: body.data.username },
       env.ADMIN_JWT_SECRET,
     );
-    await reply.setCookie(ADMIN_SESSION_COOKIE, token, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: "strict",
-      path: ADMIN_COOKIE_PATH,
-      maxAge: 60 * 60 * 12,
-    });
-
-    return { ok: true };
+    await reply.header("set-cookie", adminSessionCookieHeader(token)).send({ ok: true });
   });
 
   app.post("/admin/logout", async (_request, reply) => {
-    await reply.clearCookie(ADMIN_SESSION_COOKIE, { path: ADMIN_COOKIE_PATH });
-    return { ok: true };
+    await reply.header("set-cookie", clearedAdminSessionCookieHeader()).send({ ok: true });
   });
 
   app.get("/admin/users", async (request, reply) => {
