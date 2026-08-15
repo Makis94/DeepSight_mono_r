@@ -1,8 +1,10 @@
+import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { createDb, createListenClient } from "@hypertracker/db";
 import Fastify from "fastify";
 import { env } from "./env.js";
+import { adminRoutes } from "./modules/admin/routes.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { coinsRoutes } from "./modules/coins/routes.js";
 import { eventsRoutes } from "./modules/events/routes.js";
@@ -52,6 +54,14 @@ export async function buildServer() {
   });
   await app.register((instance) => {
     realtimeRoutes(instance, hub);
+  });
+  // Own encapsulated context: admin auth is cookie-based, so its CORS must allow credentials
+  // for one specific allowlisted origin — unlike the permissive reflect-any-origin default
+  // `cors` above, which never sends credentials and would be unsafe to combine with them.
+  await app.register(async (instance) => {
+    await instance.register(cors, { origin: env.ADMIN_ORIGIN, credentials: true });
+    await instance.register(cookie);
+    adminRoutes(instance, db);
   });
 
   return app;

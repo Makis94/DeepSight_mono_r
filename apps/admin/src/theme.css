@@ -1,0 +1,136 @@
+:root {
+  --bg: #0a0714;
+  --bg-raised: #150f24;
+  --border: #2b2145;
+  --text: #ecebff;
+  --text-muted: #8177a3;
+  --accent: #22e8ff;
+  --danger: #ff2f5e;
+  --ok: #39ffb0;
+  --warn: #ffb020;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.admin-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.admin-header h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.admin-login {
+  max-width: 320px;
+  margin: 20vh auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-login h1 {
+  font-size: 18px;
+  margin: 0 0 8px;
+  text-align: center;
+}
+
+input[type="text"],
+input[type="password"] {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+button {
+  background: var(--accent);
+  color: #05060a;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.admin-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-active,
+.status-trial {
+  background: rgba(57, 255, 176, 0.15);
+  color: var(--ok);
+}
+
+.status-expired,
+.status-canceled {
+  background: rgba(255, 47, 94, 0.15);
+  color: var(--danger);
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}

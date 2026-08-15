@@ -4,5 +4,6 @@ export * from "./schemas/watched-wallet.js";
 export * from "./schemas/settings.js";
 export * from "./schemas/coins.js";
 export * from "./schemas/subscription.js";
+export * from "./schemas/admin.js";
 export * from "./auth/index.js";
 export * from "./payments/index.js";
