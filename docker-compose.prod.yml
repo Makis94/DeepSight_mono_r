@@ -1,0 +1,138 @@
+# Production stack: Postgres + Caddy (auto-HTTPS reverse proxy) + apps/api + apps/bot +
+# the six apps/worker processes, each its own container/restart policy per CLAUDE.md ("each
+# worker must not go down together with apps/api"). apps/web and apps/admin are NOT here —
+# those are static builds deployed to Vercel, not run on this VM.
+#
+# Reads production secrets from a root `.env` file (see .env.production.example) — Docker
+# Compose loads `.env` in this directory automatically, no --env-file flag needed.
+#
+# Usage: docker compose -f docker-compose.prod.yml up -d --build
+
+x-env-common: &env-common
+  NODE_ENV: production
+  DATABASE_URL: postgres://hypertracker:${POSTGRES_PASSWORD}@postgres:5432/hypertracker
+
+x-worker-common: &worker-common
+  build:
+    context: .
+    dockerfile: apps/worker/Dockerfile
+  restart: unless-stopped
+  env_file: .env
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks: [internal]
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hypertracker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: hypertracker
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hypertracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks: [internal]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      <<: *env-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  bot:
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      <<: *env-common
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  # HEARTBEAT_PORT per service matches each process's own code default (see the
+  # createXEnv(defaultHeartbeatPort) call in apps/worker/src/<worker>/index.ts) — ports
+  # only need to be unique per-process for local `pnpm dev`; here each runs in its own
+  # container so it's just kept aligned with dev for consistency / easier log grepping.
+  wallet-watcher:
+    <<: *worker-common
+    environment:
+      <<: *env-common
+      HEARTBEAT_PORT: "9101"
+    command: ["node", "dist/wallet-watcher/index.js"]
+
+  market-watcher:
+    <<: *worker-common
+    environment:
+      <<: *env-common
+      HEARTBEAT_PORT: "9102"
+    command: ["node", "dist/market-watcher/index.js"]
+
+  deposit-watcher:
+    <<: *worker-common
+    environment:
+      <<: *env-common
+      HEARTBEAT_PORT: "9103"
+    command: ["node", "dist/deposit-watcher/index.js"]
+
+  coin-registry-sync:
+    <<: *worker-common
+    environment:
+      <<: *env-common
+      HEARTBEAT_PORT: "9104"
+    command: ["node", "dist/coin-registry-sync/index.js"]
+
+  common-wallet-tracker:
+    <<: *worker-common
+    environment:
+      <<: *env-common
+      HEARTBEAT_PORT: "9105"
+    command: ["node", "dist/common-wallet-tracker/index.js"]
+
+  subscription-watcher:
+    <<: *worker-common
+    environment:
+      <<: *env-common
+      HEARTBEAT_PORT: "9106"
+    command: ["node", "dist/subscription-watcher/index.js"]
+
+networks:
+  internal:
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

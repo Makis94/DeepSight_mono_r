@@ -1,0 +1,14 @@
+# Only apps/api needs a public HTTPS endpoint on this VM — apps/bot is long-polling
+# (no inbound HTTP) and the six apps/worker processes only make outbound connections.
+# apps/web / apps/admin are static builds served from Vercel, not from here.
+#
+# {$API_DOMAIN} / {$ACME_EMAIL} come from the root .env file via docker-compose.prod.yml's
+# `caddy` service `environment:` block — Caddy substitutes {$VAR} from its own process env.
+{
+    email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+    reverse_proxy api:3001
+    encode gzip
+}
