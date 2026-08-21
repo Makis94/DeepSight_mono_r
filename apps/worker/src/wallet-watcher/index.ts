@@ -42,6 +42,9 @@ const client = new HyperliquidWsClient({
   onClose: () => {
     state.isHealthy = false;
   },
+  onPong: () => {
+    state.lastEventAt = Date.now();
+  },
 });
 
 const dedup = new RecentIdDedup();

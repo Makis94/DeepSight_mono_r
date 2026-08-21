@@ -13,6 +13,13 @@ export interface HyperliquidWsClientOptions {
   maxReconnectDelayMs?: number;
   onOpen?: () => void;
   onClose?: () => void;
+  /**
+   * Fired on every `pong` reply to our keepalive ping (see startPing/HYPERLIQUID_WS_HEARTBEAT).
+   * Proves the connection is alive end-to-end independent of business-channel traffic —
+   * consumers with sparse/no subscriptions (e.g. wallet-watcher with zero watched wallets)
+   * would otherwise never see a message to refresh their own liveness tracking.
+   */
+  onPong?: () => void;
 }
 
 function subscriptionKey(subscription: HyperliquidSubscription): string {
@@ -125,7 +132,11 @@ export class HyperliquidWsClient {
     }
 
     const { channel, data } = envelope.data;
-    if (channel === "subscriptionResponse" || channel === "pong") {
+    if (channel === "pong") {
+      this.options.onPong?.();
+      return;
+    }
+    if (channel === "subscriptionResponse") {
       return;
     }
 
