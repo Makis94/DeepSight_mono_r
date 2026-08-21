@@ -1,7 +1,7 @@
 # Build context is the repo root (monorepo) — see docker-compose.prod.yml's
 # `build.context: .` / `build.dockerfile: apps/api/Dockerfile`.
 FROM node:22-alpine AS base
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat wget
 RUN corepack enable
 
 FROM base AS pruner
