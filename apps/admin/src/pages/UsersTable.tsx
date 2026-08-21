@@ -1,4 +1,5 @@
 import type { AdminUserRow } from "@hypertracker/shared/schemas/admin";
+import { useState } from "react";
 import { adminLogout } from "../lib/api.js";
 
 function formatDate(value: string | null): string {
@@ -21,13 +22,29 @@ function expiryFor(row: AdminUserRow): string {
 export function UsersTable({
   users,
   onSignedOut,
+  onGrant,
 }: {
   users: AdminUserRow[];
   onSignedOut: () => void;
+  onGrant: (telegramId: number) => Promise<void>;
 }) {
+  // Tracks the one row currently mid-request — disables just that row's button rather than
+  // the whole table, and doubles as a guard against double-submitting the same grant.
+  const [grantingId, setGrantingId] = useState<number | null>(null);
+
   const handleLogout = async () => {
     await adminLogout();
     onSignedOut();
+  };
+
+  const handleGrant = async (telegramId: number) => {
+    if (!confirm(`Grant a 1-month subscription to Telegram ID ${telegramId}?`)) return;
+    setGrantingId(telegramId);
+    try {
+      await onGrant(telegramId);
+    } finally {
+      setGrantingId(null);
+    }
   };
 
   return (
@@ -48,6 +65,7 @@ export function UsersTable({
               <th>Joined</th>
               <th>Subscription</th>
               <th>Expires</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -63,6 +81,15 @@ export function UsersTable({
                   </span>
                 </td>
                 <td>{expiryFor(user)}</td>
+                <td>
+                  <button
+                    className="secondary small"
+                    disabled={grantingId === user.telegramId}
+                    onClick={() => void handleGrant(user.telegramId)}
+                  >
+                    {grantingId === user.telegramId ? "Granting…" : "Grant 1mo"}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

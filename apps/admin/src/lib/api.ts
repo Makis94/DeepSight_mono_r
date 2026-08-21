@@ -1,6 +1,10 @@
 // Subpath import, not the package root — see apps/web/src/lib/api.ts for why (keeps
 // non-admin schema code out of this bundle).
-import { adminUsersResponseSchema, type AdminUserRow } from "@hypertracker/shared/schemas/admin";
+import {
+  adminGrantSubscriptionResponseSchema,
+  adminUsersResponseSchema,
+  type AdminUserRow,
+} from "@hypertracker/shared/schemas/admin";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -41,4 +45,18 @@ export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
     throw new Error(`failed to load users: ${response.status}`);
   }
   return adminUsersResponseSchema.parse(await response.json()).users;
+}
+
+export async function grantSubscription(telegramId: number): Promise<AdminUserRow> {
+  const response = await fetch(`${API_URL}/admin/users/${telegramId}/grant-subscription`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (response.status === 401) {
+    throw new AdminAuthError("session expired");
+  }
+  if (!response.ok) {
+    throw new Error(`failed to grant subscription: ${response.status}`);
+  }
+  return adminGrantSubscriptionResponseSchema.parse(await response.json()).user;
 }

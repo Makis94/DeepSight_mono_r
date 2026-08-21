@@ -35,3 +35,11 @@ export const adminUsersResponseSchema = z.object({
   users: z.array(adminUserRowSchema),
 });
 export type AdminUsersResponse = z.infer<typeof adminUsersResponseSchema>;
+
+// Manual grant has no request body: the standard subscription is a single fixed-length
+// plan (SUBSCRIPTION_PERIOD_DAYS) — there's nothing for the admin to choose. Returns the
+// updated row so the caller can refresh its table entry without a second round trip.
+export const adminGrantSubscriptionResponseSchema = z.object({
+  user: adminUserRowSchema,
+});
+export type AdminGrantSubscriptionResponse = z.infer<typeof adminGrantSubscriptionResponseSchema>;

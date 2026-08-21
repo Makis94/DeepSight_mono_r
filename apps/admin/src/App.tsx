@@ -1,6 +1,6 @@
 import type { AdminUserRow } from "@hypertracker/shared/schemas/admin";
 import { useCallback, useEffect, useState } from "react";
-import { AdminAuthError, fetchAdminUsers } from "./lib/api.js";
+import { AdminAuthError, fetchAdminUsers, grantSubscription } from "./lib/api.js";
 import { Login } from "./pages/Login.js";
 import { UsersTable } from "./pages/UsersTable.js";
 
@@ -45,5 +45,24 @@ export function App() {
       </div>
     );
   }
-  return <UsersTable users={view.users} onSignedOut={() => setView({ status: "login" })} />;
+
+  const handleGrant = async (telegramId: number) => {
+    const updated = await grantSubscription(telegramId);
+    setView((current) =>
+      current.status === "ready"
+        ? {
+            status: "ready",
+            users: current.users.map((u) => (u.telegramId === telegramId ? updated : u)),
+          }
+        : current,
+    );
+  };
+
+  return (
+    <UsersTable
+      users={view.users}
+      onSignedOut={() => setView({ status: "login" })}
+      onGrant={handleGrant}
+    />
+  );
 }

@@ -1,5 +1,9 @@
 import { subscriptions, users, type Database } from "@hypertracker/db";
-import { adminLoginBodySchema, type AdminUserRow } from "@hypertracker/shared";
+import {
+  adminLoginBodySchema,
+  SUBSCRIPTION_PERIOD_DAYS,
+  type AdminUserRow,
+} from "@hypertracker/shared";
 import { desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { env } from "../../env.js";
@@ -11,6 +15,13 @@ import {
   isLoginRateLimited,
   recordFailedLoginAttempt,
 } from "./login-rate-limit.js";
+
+// Same convention as apps/api/src/modules/subscription/routes.ts's daysFromNow — duplicated
+// rather than imported since that module also owns NowPayments-specific setup this route
+// has no business depending on.
+function daysFromNow(days: number, from: Date = new Date()): Date {
+  return new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
+}
 
 const isProduction = env.NODE_ENV === "production";
 // Cookie only ever needs to travel to admin routes — keeps it out of every user-facing
@@ -117,4 +128,84 @@ export function adminRoutes(app: FastifyInstance, db: Database): void {
 
     return { users: result };
   });
+
+  // Manual grant for testers/support — sets the standard plan the same way a finished
+  // NowPayments payment does (see subscription/routes.ts's webhook handler), just without a
+  // payment behind it. No trial_claims interaction: this always grants "active", never
+  // "trial", so it can't be used to bypass the one-trial-per-user abuse guard.
+  app.post<{ Params: { telegramId: string } }>(
+    "/admin/users/:telegramId/grant-subscription",
+    async (request, reply) => {
+      const session = await requireAdminSession(request, reply);
+      if (!session) return;
+
+      const telegramId = Number(request.params.telegramId);
+      if (!Number.isInteger(telegramId) || telegramId <= 0) {
+        await reply.status(400).send({ error: "invalid telegramId" });
+        return;
+      }
+
+      const [user] = await db
+        .select({ telegramId: users.telegramId })
+        .from(users)
+        .where(eq(users.telegramId, telegramId))
+        .limit(1);
+      if (!user) {
+        await reply.status(404).send({ error: "user not found" });
+        return;
+      }
+
+      const [sub] = await db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.telegramId, telegramId))
+        .limit(1);
+      const extendFrom =
+        sub?.currentPeriodEnd && sub.currentPeriodEnd.getTime() > Date.now()
+          ? sub.currentPeriodEnd
+          : new Date();
+      const currentPeriodEnd = daysFromNow(SUBSCRIPTION_PERIOD_DAYS, extendFrom);
+
+      await db
+        .insert(subscriptions)
+        .values({ telegramId, status: "active", currentPeriodEnd })
+        .onConflictDoUpdate({
+          target: subscriptions.telegramId,
+          set: { status: "active", currentPeriodEnd, updatedAt: new Date() },
+        });
+
+      const [row] = await db
+        .select({
+          telegramId: users.telegramId,
+          username: users.username,
+          firstName: users.firstName,
+          createdAt: users.createdAt,
+          subscriptionStatus: subscriptions.status,
+          trialEndsAt: subscriptions.trialEndsAt,
+          currentPeriodEnd: subscriptions.currentPeriodEnd,
+        })
+        .from(users)
+        .leftJoin(subscriptions, eq(subscriptions.telegramId, users.telegramId))
+        .where(eq(users.telegramId, telegramId))
+        .limit(1);
+      if (!row) {
+        // Can't happen: the users-row existence check above already passed, and the
+        // subscriptions upsert just above guarantees a matching subscriptions row too.
+        await reply.status(500).send({ error: "failed to load updated user" });
+        return;
+      }
+
+      const updated: AdminUserRow = {
+        telegramId: row.telegramId,
+        username: row.username,
+        firstName: row.firstName,
+        createdAt: row.createdAt.toISOString(),
+        subscriptionStatus: row.subscriptionStatus ?? "expired",
+        trialEndsAt: row.trialEndsAt?.toISOString() ?? null,
+        currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
+      };
+
+      return { user: updated };
+    },
+  );
 }

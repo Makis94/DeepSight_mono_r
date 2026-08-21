@@ -85,6 +85,16 @@ button.secondary {
   border: 1px solid var(--border);
 }
 
+button.small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .admin-error {
   color: var(--danger);
   font-size: 13px;
