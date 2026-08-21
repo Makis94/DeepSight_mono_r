@@ -6,7 +6,8 @@ import { z } from "zod";
 // still lives in apps/api (see PUBLIC_API_URL usage below) since that's the one publicly
 // reachable HTTP surface NowPayments can call back into.
 // source: NowPayments HelpCenter "API and endpoint description" (POST /v1/invoice),
-// verified 2026-08-12.
+// verified 2026-08-12; success_url/cancel_url confirmed via NowPayments' own
+// nowpayments-api-js reference client, verified 2026-08-21.
 
 const createInvoiceResponseApiSchema = z.object({
   id: z.union([z.string(), z.number()]).transform(String),
@@ -20,6 +21,10 @@ export interface CreateInvoiceParams {
   orderId: string;
   orderDescription: string;
   ipnCallbackUrl: string;
+  // Where NowPayments' hosted invoice page redirects the customer after payment
+  // succeeds/is cancelled — without these it stays on NowPayments' own generic result page.
+  successUrl: string;
+  cancelUrl: string;
 }
 
 export async function createInvoice(
@@ -37,6 +42,8 @@ export async function createInvoice(
       order_id: params.orderId,
       order_description: params.orderDescription,
       ipn_callback_url: params.ipnCallbackUrl,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
     }),
   });
 

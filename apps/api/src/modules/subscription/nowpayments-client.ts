@@ -12,15 +12,21 @@ export interface NowPaymentsClientConfig {
 }
 
 // source: NowPayments HelpCenter "API and endpoint description" (POST /v1/invoice),
-// verified 2026-08-12. price_amount/price_currency are required; the rest are optional.
-// Using the Invoice API (not the Payment API's /v1/payment) deliberately — it returns a
-// single hosted invoice_url where the customer picks their own crypto, rather than us having
-// to pre-select a pay_currency and hand back a raw pay_address/QR.
+// verified 2026-08-12; success_url/cancel_url confirmed via NowPayments' own
+// nowpayments-api-js reference client, verified 2026-08-21. price_amount/price_currency are
+// required; the rest are optional. Using the Invoice API (not the Payment API's /v1/payment)
+// deliberately — it returns a single hosted invoice_url where the customer picks their own
+// crypto, rather than us having to pre-select a pay_currency and hand back a raw
+// pay_address/QR.
 export interface CreateInvoiceParams {
   priceAmountUsd: string;
   orderId: string;
   orderDescription: string;
   ipnCallbackUrl: string;
+  // Where NowPayments' hosted invoice page redirects the customer after payment
+  // succeeds/is cancelled — without these it stays on NowPayments' own generic result page.
+  successUrl: string;
+  cancelUrl: string;
 }
 
 const createInvoiceResponseApiSchema = z.object({
@@ -53,6 +59,8 @@ export class NowPaymentsClient {
         order_id: params.orderId,
         order_description: params.orderDescription,
         ipn_callback_url: params.ipnCallbackUrl,
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
       }),
     });
 

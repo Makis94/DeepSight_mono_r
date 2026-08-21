@@ -19,6 +19,10 @@ const envSchema = z.object({
   // creating invoices — NowPayments needs to be able to POST back to it, so this can't be
   // localhost outside of tunneled local dev (see run-local-dev skill).
   PUBLIC_API_URL: z.string().url(),
+  // apps/web's publicly reachable URL — used as the success_url/cancel_url when creating a
+  // NowPayments invoice, so the hosted payment page redirects the customer back to our site
+  // instead of stranding them on NowPayments' own generic "Paid successfully" page.
+  PUBLIC_WEB_URL: z.string().url(),
   // Single-operator admin panel (apps/admin) — deliberately separate credential from the
   // unified Telegram identity system (see CLAUDE.md), since the admin isn't a product user.
   ADMIN_USERNAME: z.string().min(1),

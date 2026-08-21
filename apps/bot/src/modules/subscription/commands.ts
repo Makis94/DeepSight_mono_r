@@ -72,6 +72,8 @@ export function registerSubscriptionCommands(bot: Bot, db: Database, logger: Log
         orderId,
         orderDescription: `HyperTracker subscription (${SUBSCRIPTION_PERIOD_DAYS} days)`,
         ipnCallbackUrl: `${env.PUBLIC_API_URL}/webhooks/nowpayments`,
+        successUrl: env.PUBLIC_WEB_URL,
+        cancelUrl: env.PUBLIC_WEB_URL,
       });
 
       await db

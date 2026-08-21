@@ -11,6 +11,10 @@ const envSchema = z.object({
   // apps/api's publicly reachable URL — the bot's /subscribe command points NowPayments'
   // ipn_callback_url at apps/api's webhook route, not at itself.
   PUBLIC_API_URL: z.string().url(),
+  // apps/web's publicly reachable URL — used as the success_url/cancel_url when creating a
+  // NowPayments invoice from /subscribe, so the hosted payment page redirects the customer
+  // back to our site instead of stranding them on NowPayments' own generic success page.
+  PUBLIC_WEB_URL: z.string().url(),
 });
 
 export const env = envSchema.parse(process.env);
