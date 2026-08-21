@@ -41,5 +41,4 @@ export const TRIAL_DURATION_DAYS = 3;
 // Single tier for now — no premium/plan-tier concept exists elsewhere in the project either.
 export const SUBSCRIPTION_PERIOD_DAYS = 30;
 // PLACEHOLDER — no price was specified by the business; change before going live.
-// TEMP: dropped from "9.99" for a live NowPayments test — revert once the test payment is confirmed.
-export const SUBSCRIPTION_PRICE_USD = "3.00";
+export const SUBSCRIPTION_PRICE_USD = "100.00";
