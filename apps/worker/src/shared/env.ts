@@ -99,6 +99,10 @@ export function createSubscriptionWatcherEnv(defaultHeartbeatPort: number) {
       HEARTBEAT_PORT: z.coerce.number().int().positive().default(defaultHeartbeatPort),
       NOWPAYMENTS_API_KEY: z.string().min(1),
       NOWPAYMENTS_BASE_URL: z.string().url().default("https://api.nowpayments.io"),
+      // Used only to push a "subscription active" DM once a reconciled payment is credited
+      // (see notifySubscriptionActive in index.ts) — this worker never otherwise talks to
+      // Telegram. Same token apps/bot and apps/api already hold.
+      BOT_TOKEN: z.string().min(1),
       // How often to poll NowPayments for stuck payments and sweep expired subscriptions —
       // this is a reconciliation fallback to the apps/api webhook, not the primary path, so
       // minutes-scale is fine.

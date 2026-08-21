@@ -9,7 +9,7 @@ import {
   type SubscriptionResponse,
 } from "@hypertracker/shared";
 import { eq } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
+import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { env } from "../../env.js";
 import { requireSession } from "../auth/guard.js";
 import { NowPaymentsClient } from "./nowpayments-client.js";
@@ -21,6 +21,39 @@ const nowPayments = new NowPaymentsClient({
 
 function daysFromNow(days: number, from: Date = new Date()): Date {
   return new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function formatDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// Duplicated in apps/worker/src/subscription-watcher/index.ts (its reconciliation loop
+// credits the fallback path, this is the primary webhook path) rather than shared — same
+// rationale as the daysFromNow duplication above, and it's a plain unauthenticated fetch to
+// Telegram's stable Bot API, not something that benefits from an SDK wrapper here.
+async function notifySubscriptionActive(
+  telegramId: number,
+  currentPeriodEnd: Date,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: telegramId,
+        text: `✅ Subscription active until ${formatDate(currentPeriodEnd)}.`,
+      }),
+    });
+    if (!response.ok) {
+      log.warn(
+        { telegramId, status: response.status },
+        "failed to send subscription-active notification",
+      );
+    }
+  } catch (err) {
+    log.error({ err, telegramId }, "failed to send subscription-active notification");
+  }
 }
 
 async function toSubscriptionResponse(
@@ -201,6 +234,8 @@ export function subscriptionRoutes(app: FastifyInstance, db: Database): void {
           target: subscriptions.telegramId,
           set: { status: "active", currentPeriodEnd, updatedAt: new Date() },
         });
+
+      await notifySubscriptionActive(existing.telegramId, currentPeriodEnd, request.log);
     }
 
     return reply.status(200).send({ ok: true });

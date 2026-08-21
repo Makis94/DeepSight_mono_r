@@ -35,6 +35,39 @@ function daysFromNow(days: number, from: Date = new Date()): Date {
   return new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
+function formatDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// Duplicated in apps/api/src/modules/subscription/routes.ts (its webhook handler credits
+// the common/fast path, this is the reconciliation fallback) rather than shared — same
+// rationale as creditFinishedPayment above, and it's a plain unauthenticated fetch to
+// Telegram's stable Bot API, not something that benefits from an SDK wrapper here. A stuck
+// payment can sit in an in-flight NowPayments status for 10-25+ minutes before this
+// reconciliation loop (or the webhook) credits it — worth a DM so the user isn't left
+// wondering whether a real payment went through, especially once SUBSCRIPTION_PRICE_USD is
+// back above a few dollars.
+async function notifySubscriptionActive(telegramId: number, currentPeriodEnd: Date): Promise<void> {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: telegramId,
+        text: `✅ Subscription active until ${formatDate(currentPeriodEnd)}.`,
+      }),
+    });
+    if (!response.ok) {
+      log.warn(
+        { telegramId, status: response.status },
+        "failed to send subscription-active notification",
+      );
+    }
+  } catch (err) {
+    log.error({ err, telegramId }, "failed to send subscription-active notification");
+  }
+}
+
 // Same extension rule as apps/api's POST /webhooks/nowpayments handler — keep the two in
 // sync if this logic ever changes. Duplicated rather than factored into a shared package
 // because it's the only piece of business logic apps/api and apps/worker would need to
@@ -60,6 +93,8 @@ async function creditFinishedPayment(telegramId: number, periodDays: number): Pr
       target: subscriptions.telegramId,
       set: { status: "active", currentPeriodEnd, updatedAt: new Date() },
     });
+
+  await notifySubscriptionActive(telegramId, currentPeriodEnd);
 }
 
 async function reconcileStuckPayments(): Promise<void> {
