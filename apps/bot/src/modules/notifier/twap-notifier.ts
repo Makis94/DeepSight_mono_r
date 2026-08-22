@@ -61,16 +61,16 @@ function shortAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-// Schema doc (marketTwapSuspectedPayloadSchema) mandates the heuristic/"suspected" nature
-// stay visible wherever this is rendered or notified — the "Likely" in the title carries
-// that on its own now (mirrors apps/web's LikelyTwapsTable heading), so the message body
-// doesn't need to spell it out again.
+// Schema doc (marketTwapSuspectedPayloadSchema) guarantees every event of this type has
+// already been REST-confirmed against that address's real Hyperliquid TWAP fills (see
+// twap-confirm.ts) before it's published — there is no unconfirmed/"likely" variant to hedge
+// language for here.
 function formatTwapMessage(payload: MarketTwapSuspectedPayload, amountUsd: string): string {
   const amount = Math.round(Number(amountUsd)).toLocaleString("en-US");
   const sideLabel = payload.side === "buy" ? "🟢 Buy" : "🔴 Sell";
   return [
-    `🌀 Likely TWAP`,
-    `${sideLabel} ~$${amount} ${payload.coin} across ${payload.occurrences} suborders, avg $${payload.avgPrice}`,
+    `✅ Confirmed TWAP`,
+    `${sideLabel} $${amount} ${payload.coin} across ${payload.occurrences} real suborders, avg $${payload.avgPrice}`,
     `Address: \`${shortAddress(payload.address)}\``,
   ].join("\n");
 }

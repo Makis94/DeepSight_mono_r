@@ -1,0 +1,1 @@
+ALTER TYPE "public"."event_type" ADD VALUE 'wallet_twap_slice_fill' BEFORE 'wallet_large_position_change';

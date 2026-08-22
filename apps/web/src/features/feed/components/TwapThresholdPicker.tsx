@@ -48,8 +48,8 @@ export function TwapThresholdPicker({
 }: TwapThresholdPickerProps) {
   return (
     <section className="ht-section">
-      <h2>Likely TWAP alert threshold</h2>
-      <p>Alert me on likely-TWAP activity above:</p>
+      <h2>TWAP alert threshold</h2>
+      <p>Alert me on confirmed TWAP activity above:</p>
       <div className="ht-threshold-row">
         <button
           type="button"

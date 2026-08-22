@@ -92,6 +92,11 @@ export function getActivity(event: RealtimeEvent): Activity {
   switch (payload.type) {
     case "wallet_twap":
       return { label: `TWAP ${payload.status}`, tone: "neutral" };
+    case "wallet_twap_slice_fill":
+      return {
+        label: `TWAP fill ${payload.size} @ ${payload.price}`,
+        tone: payload.side === "buy" ? "long" : "short",
+      };
     case "wallet_deposit":
       return { label: "Deposit", tone: "long" };
     case "wallet_withdrawal":

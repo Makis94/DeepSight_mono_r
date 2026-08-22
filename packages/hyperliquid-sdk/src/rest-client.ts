@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { clearinghouseStateSchema, type ClearinghouseState } from "./types.js";
+import {
+  clearinghouseStateSchema,
+  userTwapSliceFillsResponseSchema,
+  type ClearinghouseState,
+  type WsTwapSliceFill,
+} from "./types.js";
 
 // source: hyperliquid-docs MCP (https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals), verified: 2026-07-27
 const metaUniverseEntrySchema = z.object({
@@ -71,6 +76,39 @@ export async function getClearinghouseState(
 
   const json: unknown = await response.json();
   return clearinghouseStateSchema.parse(json);
+}
+
+/**
+ * POST {baseUrl}/info { "type": "userTwapSliceFills", "user": address } — up to the 2000
+ * most recent real TWAP suborder fills for an address, each tagged with its `twapId`.
+ * Info request weight 20 plus additional weight per 20 items returned (source:
+ * hyperliquid-docs MCP, rate-limits-and-user-limits page, verified: 2026-08-22) — meant to
+ * be called on demand for a specific candidate address, not polled per-address on an
+ * interval; market-watcher's twap-confirm.ts only calls this after its own heuristic has
+ * already flagged a candidate, keeping call volume low.
+ *
+ * Unlike the `userTwapHistory`/`userTwapSliceFills` WS subscriptions, this is a one-off
+ * REST call — it does not count against Hyperliquid's 10-unique-user cap on user-specific
+ * WS subscriptions, so it can be used for arbitrary (not pre-watched) addresses.
+ */
+export async function getUserTwapSliceFills(
+  baseUrl: string,
+  user: string,
+): Promise<WsTwapSliceFill[]> {
+  const response = await fetch(`${baseUrl}/info`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "userTwapSliceFills", user }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Hyperliquid userTwapSliceFills request failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const json: unknown = await response.json();
+  return userTwapSliceFillsResponseSchema.parse(json);
 }
 
 export interface PositionLeverageAndMargin {

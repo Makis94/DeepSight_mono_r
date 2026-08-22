@@ -72,6 +72,31 @@ export const wsUserTwapHistoryMessageSchema = z.object({
 });
 export type WsUserTwapHistoryMessage = z.infer<typeof wsUserTwapHistoryMessageSchema>;
 
+// Individual real suborder fills of a TWAP order, tagged by twapId — distinct from
+// userTwapHistory's per-order status transitions. TWAP fills carry a zero hash
+// ("0x000...000") per the docs' own example, unlike regular fills.
+// source: hyperliquid-docs MCP (websocket/subscriptions page, and for-developers/api/
+// info-endpoint page's "Retrieve a user's TWAP slice fills" section — same wire shape is
+// used for both the WS subscription and the REST info request), verified: 2026-08-22.
+export const wsTwapSliceFillSchema = z.object({
+  fill: wsFillSchema,
+  twapId: z.number(),
+});
+export type WsTwapSliceFill = z.infer<typeof wsTwapSliceFillSchema>;
+
+export const wsUserTwapSliceFillsMessageSchema = z.object({
+  isSnapshot: z.boolean().optional(),
+  user: z.string(),
+  twapSliceFills: z.array(wsTwapSliceFillSchema),
+});
+export type WsUserTwapSliceFillsMessage = z.infer<typeof wsUserTwapSliceFillsMessageSchema>;
+
+// REST info response for { type: "userTwapSliceFills", user } is a bare array (no
+// isSnapshot/user wrapper, unlike the WS message) — source: hyperliquid-docs MCP
+// (info-endpoint page, "Retrieve a user's TWAP slice fills"), verified: 2026-08-22. Returns
+// at most 2000 most recent slice fills.
+export const userTwapSliceFillsResponseSchema = z.array(wsTwapSliceFillSchema);
+
 export const wsTradeSchema = z.object({
   coin: z.string(),
   side: z.string(),
@@ -103,6 +128,7 @@ export type WsAllMidsMessage = z.infer<typeof wsAllMidsMessageSchema>;
 export type HyperliquidSubscription =
   | { type: "userFills"; user: string; aggregateByTime?: boolean }
   | { type: "userTwapHistory"; user: string }
+  | { type: "userTwapSliceFills"; user: string }
   | { type: "trades"; coin: string }
   | { type: "allMids"; dex?: string };
 

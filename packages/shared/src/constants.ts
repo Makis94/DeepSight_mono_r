@@ -3,6 +3,7 @@ export const EVENT_TYPES = [
   "wallet_open_short",
   "wallet_close_position",
   "wallet_twap",
+  "wallet_twap_slice_fill",
   "wallet_large_position_change",
   "wallet_deposit",
   "wallet_withdrawal",

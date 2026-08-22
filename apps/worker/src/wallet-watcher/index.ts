@@ -10,6 +10,7 @@ import { createLogger } from "../shared/logger.js";
 import { RecentIdDedup } from "./dedup.js";
 import { createFillsHandler } from "./handlers/fills.js";
 import { createTwapHandler } from "./handlers/twap.js";
+import { createTwapSliceFillsHandler } from "./handlers/twap-slice-fills.js";
 import { SubscriptionManager } from "./subscription-manager.js";
 
 const WORKER_ID = "wallet-watcher";
@@ -58,6 +59,7 @@ client.on(
   "userTwapHistory",
   createTwapHandler(db, dedup, subscriptions, log, HYPERLIQUID_REST_URLS[network]),
 );
+client.on("userTwapSliceFills", createTwapSliceFillsHandler(db, dedup, subscriptions, log));
 
 client.connect();
 

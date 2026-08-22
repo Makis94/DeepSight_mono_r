@@ -22,12 +22,15 @@ interface LikelyTwapsTableProps {
   onTrack: (address: string) => void;
 }
 
-// Deliberately not called "Large TWAPs" — this is a heuristic pattern match over the public
-// trades feed (same address, same side, similar suborder sizes, within a bounded time gap),
-// not confirmed Hyperliquid TWAP data. Hyperliquid's own TWAP data (userTwapHistory,
-// userTwapSliceFills) is per-address only; there is no market-wide TWAP feed to draw from
-// (see marketTwapSuspectedPayloadSchema in packages/shared for the full rationale). The
-// "Likely" framing and occurrences/window columns are here to keep that honest in the UI.
+// Every row here is a REAL Hyperliquid TWAP: market-watcher first pattern-matches the public
+// trades feed to find candidate addresses (there is no market-wide TWAP feed to draw from
+// directly), then REST-confirms each one against that specific address's actual Hyperliquid
+// TWAP fill history (see twap-confirm.ts) before it's ever published — a candidate the lookup
+// doesn't confirm is dropped upstream and never reaches this table (see
+// marketTwapSuspectedPayloadSchema in packages/shared for the full rationale). No "likely"/
+// unconfirmed rows exist here; do not reintroduce that without also reintroducing a way to
+// mark them as such — testing showed unconfirmed pattern-matches are wrong more often than
+// not (they mostly catch active traders/market-makers, not real TWAPs).
 export function LikelyTwapsTable({
   bare = false,
   enabled = true,
@@ -53,7 +56,7 @@ export function LikelyTwapsTable({
     <Wrapper className={bare ? "ht-subsection" : "ht-section"}>
       <CollapsibleHeading
         level={bare ? "h3" : "h2"}
-        title="Likely TWAPs"
+        title="TWAPs"
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
         onClearAll={
@@ -67,7 +70,7 @@ export function LikelyTwapsTable({
       />
       {!collapsed && enabled && (
         <p className="ht-muted">
-          Pattern-matched from public trade data — treat as a lead, not a fact.
+          Confirmed via real Hyperliquid TWAP fills for each address, not guessed.
         </p>
       )}
       {!collapsed && !enabled && <p className="ht-empty">Notifications are off.</p>}

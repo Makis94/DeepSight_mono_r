@@ -91,6 +91,7 @@ export class SubscriptionManager {
       if (!this.subscribedAddresses.has(address)) {
         this.client.subscribe({ type: "userFills", user: address });
         this.client.subscribe({ type: "userTwapHistory", user: address });
+        this.client.subscribe({ type: "userTwapSliceFills", user: address });
         this.subscribedAddresses.add(address);
         this.logger.info({ address }, "subscribed to wallet");
       }
@@ -100,6 +101,7 @@ export class SubscriptionManager {
       if (!desiredSet.has(address)) {
         this.client.unsubscribe({ type: "userFills", user: address });
         this.client.unsubscribe({ type: "userTwapHistory", user: address });
+        this.client.unsubscribe({ type: "userTwapSliceFills", user: address });
         this.subscribedAddresses.delete(address);
         this.logger.info({ address }, "unsubscribed from wallet");
       }

@@ -84,6 +84,22 @@ export const walletTwapPayloadSchema = z.object({
 });
 export type WalletTwapPayload = z.infer<typeof walletTwapPayloadSchema>;
 
+// One real suborder fill of a watched wallet's TWAP order, from Hyperliquid's own
+// userTwapSliceFills (WS, for precise-mode wallets — see apps/worker/src/wallet-watcher/
+// handlers/twap-slice-fills.ts). Distinct from wallet_twap: that event tracks the TWAP
+// order's overall status transitions (activated/finished/...); this one is the individual
+// executed suborder, real price/size/oid included, grouped by twapId.
+export const walletTwapSlicePayloadSchema = z.object({
+  type: z.literal("wallet_twap_slice_fill"),
+  coin: z.string(),
+  side: tradeSide,
+  price: decimalString,
+  size: decimalString,
+  twapId: z.number(),
+  oid: z.number(),
+});
+export type WalletTwapSlicePayload = z.infer<typeof walletTwapSlicePayloadSchema>;
+
 export const walletDepositPayloadSchema = z.object({
   type: z.literal("wallet_deposit"),
   amountUsdc: decimalString,
@@ -135,13 +151,21 @@ export const globalDepositPayloadSchema = z.object({
 });
 export type GlobalDepositPayload = z.infer<typeof globalDepositPayloadSchema>;
 
-// Not a confirmed Hyperliquid TWAP — Hyperliquid's own TWAP data (userTwapHistory,
-// userTwapSliceFills, twap_id) is per-address only, there is no market-wide TWAP feed (see
-// deposit-monitoring-architecture-style ADR discussion for this module). This is a pattern
-// match over the public `trades` feed: the same address repeatedly trading the same coin on
-// the same side, in similar sizes, within a bounded time gap (see market-watcher's
-// twap-heuristic.ts for the exact thresholds). Never render/notify this without making the
-// "suspected"/heuristic nature visible to the end user.
+// Hyperliquid's own TWAP data (userTwapHistory, userTwapSliceFills) is per-address only,
+// there is no market-wide TWAP feed — so this module first PATTERN-MATCHES over the public
+// `trades` feed (same address repeatedly trading the same coin on the same side, in similar
+// sizes, within a bounded time gap — see market-watcher's twap-heuristic.ts) to decide which
+// addresses are worth checking, then does a one-off REST lookup (getUserTwapSliceFills, see
+// twap-confirm.ts) against that specific address for matching real TWAP slice fills.
+//
+// The pattern-match alone is NOT a sufficient reason to show anything to a user — testing
+// showed it mostly flags addresses that aren't running a TWAP at all (an active trader or
+// market-maker repeating similar-sized trades looks identical to a TWAP on the public trades
+// tape alone). So every event of this type is only ever published once the REST lookup found
+// a real matching twapId for it — occurrences/avgPrice/notionalUsd/twapId here are always
+// aggregated from actual Hyperliquid TWAP fills, never estimated. A candidate the lookup
+// doesn't (yet) confirm is simply never published (see twap-confirm.ts) — there is no
+// unconfirmed/"likely" variant of this event.
 export const marketTwapSuspectedPayloadSchema = z.object({
   type: z.literal("market_twap_suspected"),
   coin: z.string(),
@@ -152,7 +176,8 @@ export const marketTwapSuspectedPayloadSchema = z.object({
   occurrences: z.number().int().positive(),
   firstSeenAt: z.number(),
   lastSeenAt: z.number(),
-  source: z.literal("heuristic"),
+  // The real Hyperliquid TWAP id the matching slice fills were grouped under.
+  twapId: z.number(),
 });
 export type MarketTwapSuspectedPayload = z.infer<typeof marketTwapSuspectedPayloadSchema>;
 
@@ -162,6 +187,7 @@ export const eventPayloadSchema = z.discriminatedUnion("type", [
   walletClosePositionPayloadSchema,
   walletLargePositionChangePayloadSchema,
   walletTwapPayloadSchema,
+  walletTwapSlicePayloadSchema,
   walletDepositPayloadSchema,
   walletWithdrawalPayloadSchema,
   walletFundingPayloadSchema,

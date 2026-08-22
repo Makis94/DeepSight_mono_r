@@ -40,10 +40,9 @@ export function createTradesHandler(
       // minNotionalUsd filter below. A real TWAP suborder is typically far smaller than any
       // single-trade large-trade threshold (e.g. a $10k/1h TWAP is ~$83 suborders), so
       // filtering first would make the detector blind to exactly what it needs to see.
-      // Always observe both sides — using `??` here would short-circuit the seller
-      // observation whenever the buyer side already produced a detection, silently dropping
-      // that trade from the seller's streak.
-      const buyDetection = twapDetector.observe({
+      // observe() only accumulates now — detection happens on a timer via twapDetector.flush()
+      // (see market-watcher/index.ts and twap-confirm.ts), not inline here.
+      twapDetector.observe({
         coin: trade.coin,
         side: "buy",
         address: classified.payload.buyerAddress,
@@ -51,7 +50,7 @@ export function createTradesHandler(
         size,
         time: trade.time,
       });
-      const sellDetection = twapDetector.observe({
+      twapDetector.observe({
         coin: trade.coin,
         side: "sell",
         address: classified.payload.sellerAddress,
@@ -59,28 +58,6 @@ export function createTradesHandler(
         size,
         time: trade.time,
       });
-      const twapDetection = buyDetection ?? sellDetection;
-
-      if (twapDetection) {
-        const twapEvent: Omit<NewEvent, "id" | "createdAt"> = {
-          type: "market_twap_suspected",
-          walletAddress: null,
-          coin: twapDetection.coin,
-          side: twapDetection.side,
-          amountUsd: twapDetection.notionalUsd,
-          payload: twapDetection,
-          occurredAt: new Date(twapDetection.lastSeenAt),
-          externalId: `twap-heuristic:${twapDetection.coin}:${twapDetection.address}:${twapDetection.side}:${twapDetection.firstSeenAt}`,
-        };
-        try {
-          await publishEvent(db, twapEvent);
-        } catch (err) {
-          logger.error(
-            { err, coin: twapDetection.coin, address: twapDetection.address },
-            "failed to publish market_twap_suspected event",
-          );
-        }
-      }
 
       if (classified.notionalUsd < minNotionalUsd) continue;
 

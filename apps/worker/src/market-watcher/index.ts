@@ -1,12 +1,18 @@
-import { createDb } from "@hypertracker/db";
-import { HYPERLIQUID_WS_URLS, HyperliquidWsClient } from "@hypertracker/hyperliquid-sdk";
+import { createDb, type NewEvent } from "@hypertracker/db";
+import {
+  HYPERLIQUID_REST_URLS,
+  HYPERLIQUID_WS_URLS,
+  HyperliquidWsClient,
+} from "@hypertracker/hyperliquid-sdk";
 import { createMarketWatcherEnv } from "../shared/env.js";
 import { startHeartbeatServer, type HeartbeatState } from "../shared/heartbeat.js";
 import { createLogger } from "../shared/logger.js";
+import { publishEvent } from "../shared/publish-event.js";
 import { RecentIdDedup } from "./dedup.js";
 import { createAllMidsHandler } from "./handlers/all-mids.js";
 import { createTradesHandler } from "./handlers/trades.js";
 import { SubscriptionManager } from "./subscription-manager.js";
+import { confirmTwapCandidate } from "./twap-confirm.js";
 import { DEFAULT_TWAP_HEURISTIC_PARAMS, TwapPatternDetector } from "./twap-heuristic.js";
 
 const WORKER_ID = "market-watcher";
@@ -56,8 +62,42 @@ client.subscribe({ type: "allMids" });
 
 client.connect();
 
-// Bounds the detector's in-memory streak map — see twap-heuristic.ts pruneStale doc comment.
-setInterval(() => twapDetector.pruneStale(Date.now()), REFRESH_INTERVAL_MS);
+// Offers every streak that currently clears the heuristic thresholds and hasn't been
+// reported yet (see twap-heuristic.ts collectCandidates() doc comment — this runs as soon as
+// a streak first qualifies, not once its series ends), REST-confirms each against
+// Hyperliquid's real TWAP fill history, and publishes only real confirmed matches — never a
+// guess. A candidate the lookup doesn't confirm is left alone to be re-offered on a later
+// tick, until it either confirms or the streak goes stale and is silently dropped.
+async function flushTwapDetector(): Promise<void> {
+  const candidates = twapDetector.collectCandidates(Date.now());
+  for (const candidate of candidates) {
+    try {
+      const result = await confirmTwapCandidate(HYPERLIQUID_REST_URLS[network], candidate, log);
+      if (result.status === "not_yet") continue;
+
+      twapDetector.markReported(candidate.coin, candidate.address, candidate.side);
+
+      const { payload } = result;
+      const event: Omit<NewEvent, "id" | "createdAt"> = {
+        type: "market_twap_suspected",
+        walletAddress: null,
+        coin: payload.coin,
+        side: payload.side,
+        amountUsd: payload.notionalUsd,
+        payload,
+        occurredAt: new Date(payload.lastSeenAt),
+        externalId: `twap-confirmed:${payload.coin}:${payload.address}:${payload.side}:${candidate.firstSeenAt}`,
+      };
+      await publishEvent(db, event);
+    } catch (err) {
+      log.error(
+        { err, coin: candidate.coin, address: candidate.address },
+        "failed to confirm/publish market_twap_suspected candidate",
+      );
+    }
+  }
+}
+setInterval(() => void flushTwapDetector(), REFRESH_INTERVAL_MS);
 
 async function refreshLoop(): Promise<void> {
   try {
