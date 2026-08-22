@@ -32,6 +32,14 @@ interface Streak {
   // streak on every later tick while it keeps accumulating more trades. Reset to false
   // whenever a gap resets the streak to a fresh one (see observe()).
   reported: boolean;
+  // Last time (ms) this streak was offered as a candidate — see collectCandidates. 0 means
+  // never offered. Used for fairness, NOT recency of trading: a streak's cumulative
+  // notionalUsd grows without bound for as long as it stays unbroken, so a continuously
+  // trading bot/market-maker (no real TWAP at all) can vastly outweigh a short-lived genuine
+  // TWAP — sorting candidates by notional starves real TWAPs behind noisy streaks that never
+  // confirm. Round-robin by "longest since last checked" instead so every qualifying streak
+  // gets a REST confirmation attempt within a bounded number of ticks, regardless of size.
+  lastOfferedAt: number;
 }
 
 export interface TwapObservationInput {
@@ -92,7 +100,7 @@ export class TwapPatternDetector {
     const streak: Streak =
       existing && last && input.time - last.time <= this.config.maxGapMs
         ? existing
-        : { observations: [], reported: false };
+        : { observations: [], reported: false, lastOfferedAt: 0 };
 
     streak.observations.push({ time: input.time, size: input.size, price: input.price });
     this.streaks.set(key, streak);
@@ -100,13 +108,16 @@ export class TwapPatternDetector {
 
   /**
    * Prunes streaks that have gone stale (no observation within `maxGapMs` — the series has
-   * ended, reported or not) and returns a candidate for every remaining streak that currently
-   * clears the detection thresholds and hasn't been reported yet. Called on each tick; the
-   * caller is expected to attempt REST confirmation for each candidate and call
-   * `markReported` on success (see market-watcher/index.ts).
+   * ended, reported or not) and returns a candidate for up to `maxCandidates` of the streaks
+   * that currently clear the detection thresholds and haven't been reported yet — the ones
+   * least recently offered first (see `lastOfferedAt`), so a REST-confirmation budget that
+   * can't cover every qualifying streak every tick still cycles through all of them fairly
+   * instead of always picking the same ones. Called on each tick; the caller is expected to
+   * attempt REST confirmation for each candidate and call `markReported` on success (see
+   * market-watcher/index.ts).
    */
-  collectCandidates(now: number): TwapCandidate[] {
-    const candidates: TwapCandidate[] = [];
+  collectCandidates(now: number, maxCandidates: number): TwapCandidate[] {
+    const eligible: [string, Streak][] = [];
 
     for (const [key, streak] of this.streaks) {
       const last = streak.observations[streak.observations.length - 1];
@@ -127,11 +138,21 @@ export class TwapPatternDetector {
       const notionalUsd = streak.observations.reduce((sum, o) => sum + o.size * o.price, 0);
       if (notionalUsd < this.config.minNotionalUsd) continue;
 
+      eligible.push([key, streak]);
+    }
+
+    eligible.sort(([, a], [, b]) => a.lastOfferedAt - b.lastOfferedAt);
+
+    const candidates: TwapCandidate[] = [];
+    for (const [key, streak] of eligible.slice(0, maxCandidates)) {
+      const notionalUsd = streak.observations.reduce((sum, o) => sum + o.size * o.price, 0);
       const avgPrice =
         streak.observations.reduce((sum, o) => sum + o.price, 0) / streak.observations.length;
       const firstObservation = streak.observations[0];
       const lastObservation = streak.observations[streak.observations.length - 1];
       if (!firstObservation || !lastObservation) continue;
+
+      streak.lastOfferedAt = now;
 
       const [coin, address, side] = key.split("|") as [string, string, "buy" | "sell"];
       candidates.push({

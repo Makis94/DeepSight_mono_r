@@ -77,16 +77,13 @@ client.connect();
 // guess. A candidate the lookup doesn't confirm is left alone to be re-offered on a later
 // tick, until it either confirms or the streak goes stale and is silently dropped.
 //
-// Only the MAX_TWAP_CONFIRMATIONS_PER_TICK largest-notional candidates are checked per tick —
-// active trading can produce far more heuristic candidates than the REST weight budget allows
-// confirming in one go, and checking the biggest ones first means genuinely large TWAPs (what
-// users actually set thresholds for) get confirmed before the budget runs out on small ones.
-// Anything left over simply waits for the next tick, same as a "not_yet" result.
+// Only MAX_TWAP_CONFIRMATIONS_PER_TICK candidates are checked per tick — active trading can
+// produce far more qualifying streaks than the REST weight budget allows confirming in one
+// go. collectCandidates itself picks which ones (least-recently-offered first — see its doc
+// comment: sorting this by notional instead would starve real TWAPs behind noisy long-running
+// bot streaks, whose cumulative notional grows unbounded but never confirms).
 async function flushTwapDetector(): Promise<void> {
-  const candidates = twapDetector
-    .collectCandidates(Date.now())
-    .sort((a, b) => Number(b.notionalUsd) - Number(a.notionalUsd))
-    .slice(0, MAX_TWAP_CONFIRMATIONS_PER_TICK);
+  const candidates = twapDetector.collectCandidates(Date.now(), MAX_TWAP_CONFIRMATIONS_PER_TICK);
   for (const candidate of candidates) {
     try {
       const result = await confirmTwapCandidate(HYPERLIQUID_REST_URLS[network], candidate, log);
