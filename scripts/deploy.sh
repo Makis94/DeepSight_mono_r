@@ -10,8 +10,9 @@ echo "==> Pulling latest main..."
 git fetch origin main
 git reset --hard origin/main
 
-echo "==> Building images..."
-docker compose -f docker-compose.prod.yml build
+echo "==> Building images (one at a time — the VM only has 2GB RAM, building all"
+echo "    8 images in parallel starves it and can take down the live containers)..."
+docker compose --parallel 1 -f docker-compose.prod.yml build
 
 echo "==> Running database migrations..."
 docker compose -f docker-compose.prod.yml run --rm api pnpm --filter @hypertracker/db db:migrate
