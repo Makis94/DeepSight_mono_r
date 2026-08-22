@@ -18,6 +18,14 @@ import { DEFAULT_TWAP_HEURISTIC_PARAMS, TwapPatternDetector } from "./twap-heuri
 const WORKER_ID = "market-watcher";
 const REFRESH_INTERVAL_MS = 15_000;
 
+// getUserTwapSliceFills has weight 20 (+ extra per 20 items returned) against the 1200/min
+// per-IP REST weight budget, shared with every other worker on this VM's IP — so confirmation
+// gets its own slower interval, decoupled from REFRESH_INTERVAL_MS, and each tick only spends
+// a bounded slice of that budget. source: hyperliquid-docs MCP (rate-limits-and-user-limits),
+// verified: 2026-08-22.
+const TWAP_FLUSH_INTERVAL_MS = 60_000;
+const MAX_TWAP_CONFIRMATIONS_PER_TICK = 10;
+
 const env = createMarketWatcherEnv(9102);
 const log = createLogger(env.NODE_ENV, env.LOG_LEVEL).child({ worker: WORKER_ID });
 const db = createDb(env.DATABASE_URL);
@@ -68,8 +76,17 @@ client.connect();
 // Hyperliquid's real TWAP fill history, and publishes only real confirmed matches — never a
 // guess. A candidate the lookup doesn't confirm is left alone to be re-offered on a later
 // tick, until it either confirms or the streak goes stale and is silently dropped.
+//
+// Only the MAX_TWAP_CONFIRMATIONS_PER_TICK largest-notional candidates are checked per tick —
+// active trading can produce far more heuristic candidates than the REST weight budget allows
+// confirming in one go, and checking the biggest ones first means genuinely large TWAPs (what
+// users actually set thresholds for) get confirmed before the budget runs out on small ones.
+// Anything left over simply waits for the next tick, same as a "not_yet" result.
 async function flushTwapDetector(): Promise<void> {
-  const candidates = twapDetector.collectCandidates(Date.now());
+  const candidates = twapDetector
+    .collectCandidates(Date.now())
+    .sort((a, b) => Number(b.notionalUsd) - Number(a.notionalUsd))
+    .slice(0, MAX_TWAP_CONFIRMATIONS_PER_TICK);
   for (const candidate of candidates) {
     try {
       const result = await confirmTwapCandidate(HYPERLIQUID_REST_URLS[network], candidate, log);
@@ -97,7 +114,7 @@ async function flushTwapDetector(): Promise<void> {
     }
   }
 }
-setInterval(() => void flushTwapDetector(), REFRESH_INTERVAL_MS);
+setInterval(() => void flushTwapDetector(), TWAP_FLUSH_INTERVAL_MS);
 
 async function refreshLoop(): Promise<void> {
   try {
