@@ -110,7 +110,7 @@ export function LikelyTwapsTable({
                       ? formatPrice(event.payload.avgPrice)
                       : "—"}
                   </td>
-                  <td>
+                  <td className="ht-col-address">
                     {isMarketTwapSuspected(event.payload) && (
                       <AddressCell
                         address={event.payload.address}

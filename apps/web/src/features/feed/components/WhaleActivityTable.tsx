@@ -84,7 +84,7 @@ export function WhaleActivityTable({
                 const address = event.walletAddress;
                 return (
                   <tr key={event.id} style={rowTint(activity.tone, event.amountUsd, maxAmount)}>
-                    <td>
+                    <td className="ht-col-address">
                       {address ? (
                         <AddressCell
                           address={address}

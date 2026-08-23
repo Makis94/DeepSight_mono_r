@@ -106,7 +106,7 @@ export function TopTradesTable({
                     <td className="ht-col-secondary">
                       {isMarketTrade(event.payload) ? formatPrice(event.payload.price) : "—"}
                     </td>
-                    <td>
+                    <td className="ht-col-address">
                       {address && (
                         <AddressCell
                           address={address}

@@ -81,7 +81,7 @@ export function DepositsTable({
             <tbody>
               {visibleEvents.map((event) => (
                 <tr key={event.id} style={rowTint("long", event.amountUsd, maxAmount)}>
-                  <td>
+                  <td className="ht-col-address">
                     {isGlobalDeposit(event.payload) && (
                       <AddressCell
                         address={event.payload.depositorAddress}

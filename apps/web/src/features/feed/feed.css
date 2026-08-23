@@ -584,22 +584,29 @@
   border-bottom: 1px solid var(--border);
 }
 
-/* Address-column header only (.ht-col-address is applied to the <th>, never the <td> cells —
-   AddressCell/body rows keep their own left alignment) — centered per design request. Rows
-   below aren't a bare centered string though: each one is [.ht-wallet-emoji-slot (1.5rem) +
-   0.15rem margin] followed by the address text, so text-align: center alone centers that
-   whole emoji+text block and visually shifts the address text right of true column center.
-   The nudge here (half the reserved emoji-slot width) re-centers "ADDRESS" over where the
-   address text itself actually sits, instead of over the empty emoji gutter.
+/* Address-column header AND data cells are both centered, so the column reads as one aligned
+   unit instead of a centered header sitting over left-aligned rows. Neither is a bare centered
+   string though: AddressCell's "menu" variant wraps [.ht-wallet-emoji-slot (1.5rem + 0.15rem
+   margin) + address text] in .ht-addr-cell, and its "copy" variant (WhaleActivityTable) renders
+   that same slot+text pair directly as a button's children with no wrapper. Either way,
+   text-align: center alone centers the whole slot+text block, which visually shifts the
+   address TEXT right of true column center by half the slot's reserved width (1.65rem / 2 =
+   0.825rem) — the negative margin below re-centers the visible text itself, not the box that
+   includes its invisible emoji gutter.
 
-   Selector is `.ht-table th.ht-col-address`, not just `.ht-col-address`, on purpose: a bare
-   class selector (specificity 0,1,0) loses to `.ht-table th` (0,1,1, both the base rule
-   above and its >=860px media-query override further down) on any property both declare, so
-   text-align/padding here would otherwise silently never apply — this compound selector
-   (0,2,1) outranks both. */
-.ht-table th.ht-col-address {
+   Selector is `.ht-table th/td.ht-col-address`, not a bare `.ht-col-address`, on purpose: a
+   bare class selector (specificity 0,1,0) loses to `.ht-table th`/`.ht-table td` (0,1,1, both
+   the base rules above and their >=860px media-query overrides further down) on any property
+   both declare, so text-align here would otherwise silently never apply — this compound
+   selector (0,2,1) outranks both. */
+.ht-table th.ht-col-address,
+.ht-table td.ht-col-address {
   text-align: center;
-  padding-left: 0.3rem;
+}
+
+.ht-table td.ht-col-address .ht-addr-cell,
+.ht-table td.ht-col-address > .ht-addr {
+  margin-left: -0.825rem;
 }
 
 /* Every row carries a stable key={event.id} (see FeedPage.tsx), so a CSS animation applied
