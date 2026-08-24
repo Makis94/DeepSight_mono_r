@@ -81,14 +81,14 @@ async function toSubscriptionResponse(
 
 export function subscriptionRoutes(app: FastifyInstance, db: Database): void {
   app.get("/subscription", async (request, reply) => {
-    const session = await requireSession(request, reply);
+    const session = await requireSession(request, reply, db);
     if (!session) return;
 
     return toSubscriptionResponse(db, session.telegramId);
   });
 
   app.post("/subscription/trial", async (request, reply) => {
-    const session = await requireSession(request, reply);
+    const session = await requireSession(request, reply, db);
     if (!session) return;
 
     // Insert-only trial_claims row is the actual guard — onConflictDoNothing means a repeat
@@ -119,7 +119,7 @@ export function subscriptionRoutes(app: FastifyInstance, db: Database): void {
   });
 
   app.post("/subscription/invoice", async (request, reply) => {
-    const session = await requireSession(request, reply);
+    const session = await requireSession(request, reply, db);
     if (!session) return;
 
     const orderId = `sub-${session.telegramId}-${Date.now()}`;

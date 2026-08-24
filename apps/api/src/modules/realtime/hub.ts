@@ -161,6 +161,19 @@ export class RealtimeHub {
     this.clients.delete(client);
   }
 
+  // Called right after auth/session-store.ts revokes this user's previous session (a newer
+  // login superseding it) — closes any live socket for the old session immediately instead of
+  // leaving it streaming on a stale snapshot until it happens to reconnect or the client-side
+  // 401 handling on some other REST call catches up. 4001 mirrors the "invalid session" close
+  // code realtime/routes.ts already uses for a bad handshake.
+  forceDisconnect(telegramId: number): void {
+    for (const client of this.clients) {
+      if (client.telegramId !== telegramId) continue;
+      client.socket.close(4001, "session revoked");
+      this.clients.delete(client);
+    }
+  }
+
   private async handleNotify(payload: string): Promise<void> {
     const eventId = Number(payload);
     if (!Number.isFinite(eventId)) return;

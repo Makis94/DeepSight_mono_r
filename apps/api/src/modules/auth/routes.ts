@@ -8,7 +8,9 @@ import {
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { env } from "../../env.js";
-import { signSession } from "./jwt.js";
+import type { RealtimeHub } from "../realtime/hub.js";
+import { verifySessionToken } from "./jwt.js";
+import { issueSession, revokeSession } from "./session-store.js";
 
 const miniAppBodySchema = z.object({ initData: z.string() });
 const loginWidgetBodySchema = z.object({ payload: z.record(z.string()) });
@@ -27,7 +29,7 @@ async function ensureUserRow(db: Database, session: Session): Promise<void> {
     .onConflictDoNothing({ target: users.telegramId });
 }
 
-export function authRoutes(app: FastifyInstance, db: Database): void {
+export function authRoutes(app: FastifyInstance, db: Database, hub: RealtimeHub): void {
   app.post("/auth/mini-app", async (request, reply) => {
     const body = miniAppBodySchema.safeParse(request.body);
     if (!body.success) {
@@ -38,7 +40,11 @@ export function authRoutes(app: FastifyInstance, db: Database): void {
     try {
       const session = verifyMiniAppInitData(body.data.initData, env.BOT_TOKEN);
       await ensureUserRow(db, session);
-      const token = await signSession(session, env.JWT_SECRET);
+      // Revokes whatever session this telegramId already had — see issueSession's doc
+      // comment. forceDisconnect then closes that old session's live WS socket immediately
+      // rather than leaving it to notice on its own.
+      const token = await issueSession(db, session, env.JWT_SECRET);
+      hub.forceDisconnect(session.telegramId);
       return { token, session };
     } catch (err) {
       if (err instanceof AuthVerificationError) {
@@ -59,7 +65,8 @@ export function authRoutes(app: FastifyInstance, db: Database): void {
     try {
       const session = verifyLoginWidget(body.data.payload, env.BOT_TOKEN);
       await ensureUserRow(db, session);
-      const token = await signSession(session, env.JWT_SECRET);
+      const token = await issueSession(db, session, env.JWT_SECRET);
+      hub.forceDisconnect(session.telegramId);
       return { token, session };
     } catch (err) {
       if (err instanceof AuthVerificationError) {
@@ -68,5 +75,23 @@ export function authRoutes(app: FastifyInstance, db: Database): void {
       }
       throw err;
     }
+  });
+
+  // Makes "sign out" actually kill the token server-side instead of only clearing it from
+  // the caller's own localStorage (apps/web's App.tsx calls this before clearToken()).
+  // Deliberately tolerant of a missing/already-invalid token — signing out is idempotent from
+  // the client's point of view either way.
+  app.post("/auth/logout", async (request, reply) => {
+    const header = request.headers.authorization;
+    const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
+    if (token) {
+      try {
+        const { jti } = await verifySessionToken(token, env.JWT_SECRET);
+        await revokeSession(db, jti);
+      } catch {
+        // Already invalid/expired/malformed — nothing to revoke.
+      }
+    }
+    await reply.status(204).send();
   });
 }

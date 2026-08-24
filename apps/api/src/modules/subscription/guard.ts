@@ -17,7 +17,7 @@ export async function requireActiveSubscription(
   reply: FastifyReply,
   db: Database,
 ): Promise<Session | undefined> {
-  const session = await requireSession(request, reply);
+  const session = await requireSession(request, reply, db);
   if (!session) return undefined;
 
   const [sub] = await db

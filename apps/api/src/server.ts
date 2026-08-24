@@ -51,7 +51,7 @@ export async function buildServer() {
   await app.register(websocket);
   await app.register(healthRoutes);
   await app.register((instance) => {
-    authRoutes(instance, db);
+    authRoutes(instance, db, hub);
   });
   await app.register((instance) => {
     watchedWalletsRoutes(instance, db);
@@ -69,7 +69,7 @@ export async function buildServer() {
     subscriptionRoutes(instance, db);
   });
   await app.register((instance) => {
-    realtimeRoutes(instance, hub);
+    realtimeRoutes(instance, hub, db);
   });
   // Own encapsulated context: admin auth is cookie-based (CORS handled by the delegator
   // above, keyed on the /admin path prefix).
