@@ -1,6 +1,8 @@
 // Subpath import, not the package root — the root barrel also re-exports the auth module,
 // which uses node:crypto (server-only) and would break browser typecheck/bundling.
 import { eventRecordSchema, type EventRecord } from "@hypertracker/shared/schemas/events";
+import { getMiniAppToken } from "./mini-app-session.js";
+import { isMiniApp } from "../telegram/context.js";
 
 // Same wire shape the REST backfill endpoint (GET /events, see lib/api.ts) returns — both
 // paths feed the same event lists in FeedPage, so they share one schema/type rather than
@@ -15,7 +17,6 @@ const MAX_RECONNECT_DELAY_MS = 15000;
 const AUTH_FAILURE_CLOSE_CODE = 4001;
 
 export function connectRealtime(
-  token: string,
   onEvent: (event: RealtimeEvent) => void,
   // Fired on every reconnect (not the initial connect, which the caller's own mount-time
   // backfill already covers) — hub.ts broadcasts are one-shot (pg_notify, no replay), so a
@@ -33,7 +34,14 @@ export function connectRealtime(
   let hasConnectedOnce = false;
 
   function connect(): void {
-    socket = new WebSocket(`${base}/realtime?token=${encodeURIComponent(token)}`);
+    // Mini App: token rides as a query param (the native WebSocket API can't set a custom
+    // Authorization header). Standalone site: the browser attaches the session cookie to the
+    // handshake automatically, same as any other same-site request — no query param needed.
+    const miniAppToken = isMiniApp() ? getMiniAppToken() : null;
+    const url = miniAppToken
+      ? `${base}/realtime?token=${encodeURIComponent(miniAppToken)}`
+      : `${base}/realtime`;
+    socket = new WebSocket(url);
 
     socket.addEventListener("open", () => {
       reconnectAttempt = 0;

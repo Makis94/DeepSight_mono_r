@@ -26,10 +26,6 @@ import { buildWalletColorMap } from "./wallet-colors.js";
 import { buildWalletEmojiMap } from "./wallet-emoji.js";
 import "./feed.css";
 
-interface FeedPageProps {
-  token: string;
-}
-
 const MAX_EVENTS = 200;
 
 // Merges REST backfill results into a live-push event list, deduping by id — a page load
@@ -46,7 +42,7 @@ function mergeEvents(existing: RealtimeEvent[], incoming: RealtimeEvent[]): Real
     .slice(0, MAX_EVENTS);
 }
 
-export function FeedPage({ token }: FeedPageProps) {
+export function FeedPage() {
   const [whaleEvents, setWhaleEvents] = useState<RealtimeEvent[]>([]);
   const [marketEvents, setMarketEvents] = useState<RealtimeEvent[]>([]);
   const [twapEvents, setTwapEvents] = useState<RealtimeEvent[]>([]);
@@ -82,12 +78,12 @@ export function FeedPage({ token }: FeedPageProps) {
   const [reconnectKey, setReconnectKey] = useState(0);
 
   useEffect(() => {
-    listWatchedWallets(token)
+    listWatchedWallets()
       .then(setWallets)
       .catch((err: unknown) => {
         console.error("failed to load watched wallets", err);
       });
-  }, [token, reconnectKey]);
+  }, [reconnectKey]);
 
   // Precise-slot/queue changes triggered by OTHER users (a slot freeing up, moving this
   // wallet up the FIFO) aren't pushed over the realtime channel yet — poll while this user
@@ -96,25 +92,25 @@ export function FeedPage({ token }: FeedPageProps) {
   useEffect(() => {
     if (!hasQueuedWallet) return;
     const interval = setInterval(() => {
-      listWatchedWallets(token)
+      listWatchedWallets()
         .then(setWallets)
         .catch((err: unknown) => {
           console.error("failed to refresh watched wallets", err);
         });
     }, 10_000);
     return () => clearInterval(interval);
-  }, [token, hasQueuedWallet]);
+  }, [hasQueuedWallet]);
 
   useEffect(() => {
-    listActiveCoins(token)
+    listActiveCoins()
       .then(setCoins)
       .catch((err: unknown) => {
         console.error("failed to load coin list", err);
       });
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    getSettings(token)
+    getSettings()
       .then((settings) => {
         setMinTradeAmount(settings.minTradeAmount);
         setNotifyTrades(settings.notifyTrades);
@@ -128,7 +124,7 @@ export function FeedPage({ token }: FeedPageProps) {
       .catch((err: unknown) => {
         console.error("failed to load settings", err);
       });
-  }, [token, reconnectKey]);
+  }, [reconnectKey]);
 
   // Seeds the three panels with recent matching history so they don't sit on an empty
   // "Waiting for events…" on every page load or WS reconnect (see mergeEvents doc comment
@@ -137,7 +133,7 @@ export function FeedPage({ token }: FeedPageProps) {
   // as connectRealtime's onReconnect below, since a silent WS drop-and-reconnect can miss a
   // one-shot broadcast (see that function's doc comment) without bumping reconnectKey itself.
   function refreshRecentEvents(): void {
-    listRecentEvents(token)
+    listRecentEvents()
       .then((recentEvents) => {
         const whale = recentEvents.filter(
           (event) =>
@@ -160,35 +156,31 @@ export function FeedPage({ token }: FeedPageProps) {
 
   useEffect(() => {
     refreshRecentEvents();
-  }, [token, reconnectKey]);
+  }, [reconnectKey]);
 
   useEffect(() => {
-    return connectRealtime(
-      token,
-      (event) => {
-        // Split at the source rather than filtering one combined list — a burst of market
-        // trades would otherwise be able to push whale/wallet events (rarer, higher-signal)
-        // out of a shared MAX_EVENTS cap.
-        if (event.type === "market_trade") {
-          setMarketEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
-        } else if (event.type === "market_twap_suspected") {
-          setTwapEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
-        } else if (event.type === "global_deposit") {
-          setDepositEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
-        } else {
-          setWhaleEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
-        }
-      },
-      refreshRecentEvents,
-    );
-  }, [token, reconnectKey]);
+    return connectRealtime((event) => {
+      // Split at the source rather than filtering one combined list — a burst of market
+      // trades would otherwise be able to push whale/wallet events (rarer, higher-signal)
+      // out of a shared MAX_EVENTS cap.
+      if (event.type === "market_trade") {
+        setMarketEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
+      } else if (event.type === "market_twap_suspected") {
+        setTwapEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
+      } else if (event.type === "global_deposit") {
+        setDepositEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
+      } else {
+        setWhaleEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
+      }
+    }, refreshRecentEvents);
+  }, [reconnectKey]);
 
   async function handleTrackWallet(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setFormError(null);
     setIsSubmitting(true);
     try {
-      await trackWallet(token, addressInput.trim());
+      await trackWallet(addressInput.trim());
       setAddressInput("");
       // wallet-watcher polls watched_wallets every 15s (apps/worker), so the new
       // subscription — and events for it — won't appear instantly.
@@ -207,7 +199,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleTrackAddress(address: string): Promise<void> {
     setTrackingAddress(address);
     try {
-      await trackWallet(token, address);
+      await trackWallet(address);
       setReconnectKey((key) => key + 1);
     } catch (err) {
       if (err instanceof WalletSlotLimitError) {
@@ -223,7 +215,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleUntrack(address: string): Promise<void> {
     setUntrackingAddress(address);
     try {
-      await untrackWallet(token, address);
+      await untrackWallet(address);
       setReconnectKey((key) => key + 1);
     } catch (err) {
       console.error("failed to untrack wallet", err);
@@ -241,11 +233,11 @@ export function FeedPage({ token }: FeedPageProps) {
       if (wallet.trackingMode === "precise" || wallet.queuePosition !== undefined) {
         // Precise -> release the slot, or queued -> cancel the request. Either way this
         // wallet goes back to plain "common".
-        await demoteToCommon(token, walletId);
+        await demoteToCommon(walletId);
       } else {
-        await promoteToPrecise(token, walletId);
+        await promoteToPrecise(walletId);
       }
-      const refreshed = await listWatchedWallets(token);
+      const refreshed = await listWatchedWallets();
       setWallets(refreshed);
       // A promote/demote can free or claim a Hyperliquid subscription slot for
       // wallet-watcher — same "settings changed, reconnect to pick it up" reasoning as
@@ -264,7 +256,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleSelectThreshold(preset: string): Promise<void> {
     setIsUpdatingThreshold(true);
     try {
-      const settings = await updateTradeThreshold(token, { amount: preset, enabled: true });
+      const settings = await updateTradeThreshold({ amount: preset, enabled: true });
       setMinTradeAmount(settings.minTradeAmount);
       setNotifyTrades(settings.notifyTrades);
       setReconnectKey((key) => key + 1);
@@ -280,7 +272,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleToggleTradeNotify(): Promise<void> {
     setIsUpdatingThreshold(true);
     try {
-      const settings = await updateTradeThreshold(token, { enabled: false });
+      const settings = await updateTradeThreshold({ enabled: false });
       setNotifyTrades(settings.notifyTrades);
       setReconnectKey((key) => key + 1);
     } catch (err) {
@@ -293,7 +285,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleSelectTwapThreshold(preset: string): Promise<void> {
     setIsUpdatingTwapThreshold(true);
     try {
-      const settings = await updateTwapThreshold(token, { amount: preset, enabled: true });
+      const settings = await updateTwapThreshold({ amount: preset, enabled: true });
       setMinTwapAmount(settings.minTwapAmount);
       setNotifyTwaps(settings.notifyTwaps);
       setReconnectKey((key) => key + 1);
@@ -307,7 +299,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleToggleTwapNotify(): Promise<void> {
     setIsUpdatingTwapThreshold(true);
     try {
-      const settings = await updateTwapThreshold(token, { enabled: false });
+      const settings = await updateTwapThreshold({ enabled: false });
       setNotifyTwaps(settings.notifyTwaps);
       setReconnectKey((key) => key + 1);
     } catch (err) {
@@ -320,7 +312,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleSelectDepositThreshold(preset: string): Promise<void> {
     setIsUpdatingDepositThreshold(true);
     try {
-      const settings = await updateDepositThreshold(token, { amount: preset, enabled: true });
+      const settings = await updateDepositThreshold({ amount: preset, enabled: true });
       setMinDepositAmount(settings.minDepositAmount);
       setNotifyDeposits(settings.notifyDeposits);
       setReconnectKey((key) => key + 1);
@@ -334,7 +326,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleToggleDepositNotify(): Promise<void> {
     setIsUpdatingDepositThreshold(true);
     try {
-      const settings = await updateDepositThreshold(token, { enabled: false });
+      const settings = await updateDepositThreshold({ enabled: false });
       setNotifyDeposits(settings.notifyDeposits);
       setReconnectKey((key) => key + 1);
     } catch (err) {
@@ -349,7 +341,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleToggleExcludeBtc(value: boolean): Promise<void> {
     setIsUpdatingCoinExclusions(true);
     try {
-      const settings = await updateCoinExclusions(token, { excludeBtc: value });
+      const settings = await updateCoinExclusions({ excludeBtc: value });
       setExcludeBtc(settings.excludeBtc);
       setReconnectKey((key) => key + 1);
     } catch (err) {
@@ -362,7 +354,7 @@ export function FeedPage({ token }: FeedPageProps) {
   async function handleToggleExcludeEth(value: boolean): Promise<void> {
     setIsUpdatingCoinExclusions(true);
     try {
-      const settings = await updateCoinExclusions(token, { excludeEth: value });
+      const settings = await updateCoinExclusions({ excludeEth: value });
       setExcludeEth(settings.excludeEth);
       setReconnectKey((key) => key + 1);
     } catch (err) {

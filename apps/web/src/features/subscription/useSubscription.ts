@@ -1,3 +1,4 @@
+import type { Session } from "@hypertracker/shared/auth/session";
 import { useCallback, useEffect, useState } from "react";
 import {
   createSubscriptionInvoice,
@@ -30,10 +31,12 @@ export interface SubscriptionState {
 // on a stale "you have access" view for longer than POLL_INTERVAL_MS after it stops being true.
 const POLL_INTERVAL_MS = 60_000;
 
-// token is nullable so this can be called unconditionally at the top of App (React's rules
-// of hooks forbid calling it only inside the "logged in" branch) — with no token, it just
-// sits at "loading" and never fetches, which is fine since nothing renders off it in that case.
-export function useSubscription(token: string | null): SubscriptionState {
+// session is nullable so this can be called unconditionally at the top of App (React's rules
+// of hooks forbid calling it only inside the "logged in" branch) — with no session, it just
+// sits at "loading" and never fetches, which is fine since nothing renders off it in that
+// case. Only its presence/absence matters here — auth itself is attached automatically by
+// lib/api.ts (cookie for the standalone site, in-memory bearer token for the Mini App).
+export function useSubscription(session: Session | null): SubscriptionState {
   const [status, setStatus] = useState<SubscriptionStatus>("loading");
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
   const [currentPeriodEnd, setCurrentPeriodEnd] = useState<string | null>(null);
@@ -42,9 +45,9 @@ export function useSubscription(token: string | null): SubscriptionState {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!token) return;
+    if (!session) return;
     try {
-      const sub = await getSubscription(token);
+      const sub = await getSubscription();
       setTrialEndsAt(sub.trialEndsAt);
       setCurrentPeriodEnd(sub.currentPeriodEnd);
       setTrialAvailable(sub.trialAvailable);
@@ -53,21 +56,21 @@ export function useSubscription(token: string | null): SubscriptionState {
       console.error("failed to load subscription", err);
       setStatus("error");
     }
-  }, [token]);
+  }, [session]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!session) return;
     void refresh();
     const interval = setInterval(() => void refresh(), POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [token, refresh]);
+  }, [session, refresh]);
 
   async function startTrial(): Promise<void> {
-    if (!token) return;
+    if (!session) return;
     setIsBusy(true);
     setError(null);
     try {
-      await startTrialRequest(token);
+      await startTrialRequest();
       await refresh();
     } catch (err) {
       if (err instanceof TrialAlreadyUsedError) {
@@ -82,11 +85,11 @@ export function useSubscription(token: string | null): SubscriptionState {
   }
 
   async function subscribe(): Promise<void> {
-    if (!token) return;
+    if (!session) return;
     setIsBusy(true);
     setError(null);
     try {
-      const invoice = await createSubscriptionInvoice(token);
+      const invoice = await createSubscriptionInvoice();
       openExternalLink(invoice.invoiceUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to create invoice");

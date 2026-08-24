@@ -3,10 +3,6 @@ import { listCoinPrices } from "../lib/api.js";
 import { formatPrice } from "../lib/format.js";
 import type { CoinPrice } from "@hypertracker/shared/schemas/coins";
 
-interface PriceTickerProps {
-  token: string;
-}
-
 // A fixed, small coin list (see packages/shared HEADER_TICKER_COINS) — REST-polled rather
 // than pushed over the realtime WS channel, same pattern as the coin filter's /coins fetch.
 // Matched to apps/worker's own write cadence (at most once every 2s per coin) rather than
@@ -20,7 +16,7 @@ const FLASH_DURATION_MS = 700;
 
 type FlashDirection = "up" | "down";
 
-export function PriceTicker({ token }: PriceTickerProps) {
+export function PriceTicker() {
   const [prices, setPrices] = useState<CoinPrice[]>([]);
   const [flashes, setFlashes] = useState<Map<string, FlashDirection>>(new Map());
   const previousPrices = useRef<Map<string, string>>(new Map());
@@ -29,7 +25,7 @@ export function PriceTicker({ token }: PriceTickerProps) {
   useEffect(() => {
     let cancelled = false;
     function poll(): void {
-      listCoinPrices(token)
+      listCoinPrices()
         .then((result) => {
           if (cancelled) return;
 
@@ -60,7 +56,7 @@ export function PriceTicker({ token }: PriceTickerProps) {
       clearInterval(interval);
       if (flashTimer.current) clearTimeout(flashTimer.current);
     };
-  }, [token]);
+  }, []);
 
   // Nothing to show yet (fresh deploy, worker still warming up) — no empty-state chrome for
   // a header decoration, it just doesn't render until there's something real to show.

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import { env } from "../../env.js";
+import { SESSION_COOKIE } from "../auth/guard.js";
 import { verifySessionToken } from "../auth/jwt.js";
 import type { RealtimeHub } from "./hub.js";
 
@@ -12,8 +13,12 @@ export function realtimeRoutes(app: FastifyInstance, hub: RealtimeHub, db: Datab
   });
 
   async function handleConnection(socket: WebSocket, request: FastifyRequest): Promise<void> {
+    // Mini App: token rides as a query param (a WS handshake can't carry a custom
+    // Authorization header from the browser's native WebSocket API). Standalone site: the
+    // browser attaches the session cookie to the handshake automatically, same as any other
+    // same-site request — no query param needed at all.
     const query = request.query as { token?: string };
-    const token = query.token;
+    const token = query.token ?? request.cookies[SESSION_COOKIE];
     if (!token) {
       socket.close(4001, "missing token");
       return;

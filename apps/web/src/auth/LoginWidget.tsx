@@ -1,6 +1,6 @@
+import type { Session } from "@hypertracker/shared/auth/session";
 import { useEffect, useRef } from "react";
 import { authenticateWithLoginWidget } from "../lib/api.js";
-import { storeToken } from "./session.js";
 
 declare global {
   interface Window {
@@ -9,7 +9,7 @@ declare global {
 }
 
 interface LoginWidgetProps {
-  onAuthenticated: (token: string) => void;
+  onAuthenticated: (session: Session) => void;
 }
 
 export function LoginWidget({ onAuthenticated }: LoginWidgetProps) {
@@ -21,10 +21,11 @@ export function LoginWidget({ onAuthenticated }: LoginWidgetProps) {
       for (const [key, value] of Object.entries(user)) {
         payload[key] = String(value);
       }
+      // apps/api sets the session as an httpOnly cookie on this response (see auth/routes.ts)
+      // — there's no token here for the client to hold onto, deliberately.
       authenticateWithLoginWidget(payload)
-        .then((token) => {
-          storeToken(token);
-          onAuthenticated(token);
+        .then((session) => {
+          onAuthenticated(session);
         })
         .catch((err: unknown) => {
           console.error("login widget auth failed", err);

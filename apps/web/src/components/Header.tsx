@@ -5,12 +5,11 @@ import "./header.css";
 
 interface HeaderProps {
   session: Session;
-  token: string;
   onSignOut: () => void;
   onOpenSubscription: () => void;
 }
 
-export function Header({ session, token, onSignOut, onOpenSubscription }: HeaderProps) {
+export function Header({ session, onSignOut, onOpenSubscription }: HeaderProps) {
   const displayName = session.username ? `@${session.username}` : (session.firstName ?? "Trader");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   // Starts false and only ever flips true on a real onLoad — the letter is the base layer
@@ -43,7 +42,7 @@ export function Header({ session, token, onSignOut, onOpenSubscription }: Header
   return (
     <header className="ht-header">
       <span className="ht-header-title">DeepSight</span>
-      <PriceTicker token={token} />
+      <PriceTicker />
 
       <div className="ht-header-user" ref={menuRef}>
         <span className="ht-header-name">{displayName}</span>

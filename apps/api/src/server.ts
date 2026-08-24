@@ -35,7 +35,12 @@ export async function buildServer() {
   // Request/Reply prototypes, so registering it a second time (even in an encapsulated
   // child context) throws FST_ERR_DEC_ALREADY_PRESENT. A per-request delegator lets
   // /admin/* get its own credentialed, single-origin CORS policy while every other route
-  // keeps the permissive reflect-any-origin, no-credentials default.
+  // reflects the requesting origin instead of a fixed one — also credentialed now that the
+  // standalone site authenticates via an httpOnly cookie (see auth/routes.ts), which browsers
+  // only attach to a credentialed (fetch credentials:"include") cross-origin request.
+  // `origin: true` reflects the actual Origin header rather than emitting a literal "*", so
+  // combining it with credentials:true stays spec-compliant — this is the same pattern
+  // /admin/* already uses with a fixed origin instead of a reflected one.
   await app.register(cors, {
     // Wrapped in { delegator } rather than passed as a bare function — avvio treats a
     // bare function `options` argument as an (server) => options factory evaluated once
@@ -44,10 +49,14 @@ export async function buildServer() {
     delegator: (req, callback) => {
       const corsOptions = req.url.startsWith("/admin")
         ? { origin: env.ADMIN_ORIGIN, credentials: true }
-        : { origin: true };
+        : { origin: true, credentials: true };
       callback(null, corsOptions);
     },
   });
+  // Registered once, globally: both the user-facing session cookie (auth/guard.ts,
+  // realtime/routes.ts) and the admin session cookie (admin/guard.ts) read via
+  // request.cookies, which this plugin populates on every request regardless of route.
+  await app.register(cookie);
   await app.register(websocket);
   await app.register(healthRoutes);
   await app.register((instance) => {
@@ -72,9 +81,8 @@ export async function buildServer() {
     realtimeRoutes(instance, hub, db);
   });
   // Own encapsulated context: admin auth is cookie-based (CORS handled by the delegator
-  // above, keyed on the /admin path prefix).
-  await app.register(async (instance) => {
-    await instance.register(cookie);
+  // above, keyed on the /admin path prefix; @fastify/cookie is registered globally above).
+  await app.register((instance) => {
     adminRoutes(instance, db);
   });
 
