@@ -83,9 +83,9 @@ export async function getClearinghouseState(
  * most recent real TWAP suborder fills for an address, each tagged with its `twapId`.
  * Info request weight 20 plus additional weight per 20 items returned (source:
  * hyperliquid-docs MCP, rate-limits-and-user-limits page, verified: 2026-08-22) — meant to
- * be called on demand for a specific candidate address, not polled per-address on an
- * interval; market-watcher's twap-confirm.ts only calls this after its own heuristic has
- * already flagged a candidate, keeping call volume low.
+ * be called on demand for a specific address, not polled on an interval. Used by
+ * apps/api's GET /market-twaps/:twapId/slice-fills, called only when a user expands a
+ * market_twap row in the web table, keeping call volume low.
  *
  * Unlike the `userTwapHistory`/`userTwapSliceFills` WS subscriptions, this is a one-off
  * REST call — it does not count against Hyperliquid's 10-unique-user cap on user-specific

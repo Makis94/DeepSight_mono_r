@@ -72,7 +72,7 @@ export function CommonWalletsPanel({
       </h2>
       <p className="ht-hint">
         Matched against the public trade feed — add addresses here, or click one in Large trades /
-        Likely TWAPs below.
+        TWAPs below.
       </p>
 
       {wallets.length === 0 && <p className="ht-empty">Not tracking a wallet yet.</p>}

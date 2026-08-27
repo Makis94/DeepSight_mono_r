@@ -30,10 +30,10 @@ export function isMarketTrade(
   return payload.type === "market_trade";
 }
 
-export function isMarketTwapSuspected(
+export function isMarketTwap(
   payload: EventPayload,
-): payload is Extract<EventPayload, { type: "market_twap_suspected" }> {
-  return payload.type === "market_twap_suspected";
+): payload is Extract<EventPayload, { type: "market_twap" }> {
+  return payload.type === "market_twap";
 }
 
 export function isGlobalDeposit(

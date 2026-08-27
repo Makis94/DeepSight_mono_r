@@ -8,6 +8,7 @@ export default defineConfig({
     "coin-registry-sync/index": "src/coin-registry-sync/index.ts",
     "common-wallet-tracker/index": "src/common-wallet-tracker/index.ts",
     "subscription-watcher/index": "src/subscription-watcher/index.ts",
+    "twap-watcher/index": "src/twap-watcher/index.ts",
   },
   format: ["esm"],
   target: "node22",

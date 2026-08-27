@@ -1,5 +1,5 @@
 # Production stack: Postgres + Caddy (auto-HTTPS reverse proxy) + apps/api + apps/bot +
-# the six apps/worker processes, each its own container/restart policy per CLAUDE.md ("each
+# the seven apps/worker processes, each its own container/restart policy per CLAUDE.md ("each
 # worker must not go down together with apps/api"). apps/web and apps/admin are NOT here —
 # those are static builds deployed to Vercel, not run on this VM.
 #
@@ -128,6 +128,13 @@ services:
       <<: *env-common
       HEARTBEAT_PORT: "9106"
     command: ["node", "dist/subscription-watcher/index.js"]
+
+  twap-watcher:
+    <<: *worker-common
+    environment:
+      <<: *env-common
+      HEARTBEAT_PORT: "9107"
+    command: ["node", "dist/twap-watcher/index.js"]
 
 networks:
   internal:

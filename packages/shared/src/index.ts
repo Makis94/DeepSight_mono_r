@@ -1,5 +1,6 @@
 export * from "./constants.js";
 export * from "./schemas/events.js";
+export * from "./schemas/market-twaps.js";
 export * from "./schemas/watched-wallet.js";
 export * from "./schemas/settings.js";
 export * from "./schemas/coins.js";

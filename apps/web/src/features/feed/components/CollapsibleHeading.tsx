@@ -11,7 +11,7 @@ interface CollapsibleHeadingProps {
 }
 
 // Shared heading + chevron toggle for every table section (TopTradesTable, DepositsTable,
-// LikelyTwapsTable, WhaleActivityTable) — collapsed state lives in each table itself, this
+// MarketTwapsTable, WhaleActivityTable) — collapsed state lives in each table itself, this
 // component only renders the row and flips the chevron (down = collapsed/click to expand,
 // up = expanded/click to collapse).
 export function CollapsibleHeading({

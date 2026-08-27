@@ -61,7 +61,7 @@ export function FeedPage() {
   const [notifyDeposits, setNotifyDeposits] = useState(true);
   const [isUpdatingDepositThreshold, setIsUpdatingDepositThreshold] = useState(false);
   // Shared BTC/ETH exclusion setting (users.excludeBtc/excludeEth) — feeds both the Large
-  // trades and Likely TWAPs cards, not one per table (see CoinExclusionToggle doc comment).
+  // trades and TWAPs cards, not one per table (see CoinExclusionToggle doc comment).
   const [excludeBtc, setExcludeBtc] = useState(false);
   const [excludeEth, setExcludeEth] = useState(false);
   const [isUpdatingCoinExclusions, setIsUpdatingCoinExclusions] = useState(false);
@@ -138,11 +138,11 @@ export function FeedPage() {
         const whale = recentEvents.filter(
           (event) =>
             event.type !== "market_trade" &&
-            event.type !== "market_twap_suspected" &&
+            event.type !== "market_twap" &&
             event.type !== "global_deposit",
         );
         const market = recentEvents.filter((event) => event.type === "market_trade");
-        const twap = recentEvents.filter((event) => event.type === "market_twap_suspected");
+        const twap = recentEvents.filter((event) => event.type === "market_twap");
         const deposits = recentEvents.filter((event) => event.type === "global_deposit");
         setWhaleEvents((prev) => mergeEvents(prev, whale));
         setMarketEvents((prev) => mergeEvents(prev, market));
@@ -165,7 +165,7 @@ export function FeedPage() {
       // out of a shared MAX_EVENTS cap.
       if (event.type === "market_trade") {
         setMarketEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
-      } else if (event.type === "market_twap_suspected") {
+      } else if (event.type === "market_twap") {
         setTwapEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
       } else if (event.type === "global_deposit") {
         setDepositEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));

@@ -62,8 +62,8 @@ export const updateDepositThresholdBodySchema = z
   });
 export type UpdateDepositThresholdBody = z.infer<typeof updateDepositThresholdBodySchema>;
 
-// Same preset shape as trade thresholds — reused for the heuristic "likely TWAP" alert
-// (see marketTwapSuspectedPayloadSchema), not a confirmed-TWAP feed.
+// Same preset shape as trade thresholds — for the real, market-wide TWAP alert (see
+// marketTwapPayloadSchema).
 export const TWAP_THRESHOLD_PRESETS = ["100000", "500000", "1000000"] as const;
 export type TwapThresholdPreset = (typeof TWAP_THRESHOLD_PRESETS)[number];
 

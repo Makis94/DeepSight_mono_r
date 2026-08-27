@@ -9,6 +9,7 @@ import { authRoutes } from "./modules/auth/routes.js";
 import { coinsRoutes } from "./modules/coins/routes.js";
 import { eventsRoutes } from "./modules/events/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
+import { marketTwapsRoutes } from "./modules/market-twaps/routes.js";
 import { RealtimeHub } from "./modules/realtime/hub.js";
 import { realtimeRoutes } from "./modules/realtime/routes.js";
 import { settingsRoutes } from "./modules/settings/routes.js";
@@ -73,6 +74,9 @@ export async function buildServer() {
   });
   await app.register((instance) => {
     eventsRoutes(instance, db);
+  });
+  await app.register((instance) => {
+    marketTwapsRoutes(instance, db);
   });
   await app.register((instance) => {
     subscriptionRoutes(instance, db);

@@ -11,7 +11,8 @@
     "./schemas/coins": "./src/schemas/coins.ts",
     "./schemas/watched-wallet": "./src/schemas/watched-wallet.ts",
     "./schemas/subscription": "./src/schemas/subscription.ts",
-    "./schemas/admin": "./src/schemas/admin.ts"
+    "./schemas/admin": "./src/schemas/admin.ts",
+    "./schemas/market-twaps": "./src/schemas/market-twaps.ts"
   },
   "scripts": {
     "lint": "eslint .",

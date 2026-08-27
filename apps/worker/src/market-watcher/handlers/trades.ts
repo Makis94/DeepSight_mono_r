@@ -4,13 +4,11 @@ import type { Logger } from "pino";
 import { publishEvent } from "../../shared/publish-event.js";
 import { classifyTrade, isPerpTrade } from "../classify.js";
 import type { RecentIdDedup } from "../dedup.js";
-import type { TwapPatternDetector } from "../twap-heuristic.js";
 
 export function createTradesHandler(
   db: Database,
   dedup: RecentIdDedup,
   minNotionalUsd: number,
-  twapDetector: TwapPatternDetector,
   logger: Logger,
 ): (raw: unknown) => void {
   return (raw: unknown) => {
@@ -33,31 +31,6 @@ export function createTradesHandler(
       if (!isPerpTrade(trade)) continue;
 
       const classified = classifyTrade(trade);
-      const price = Number(trade.px);
-      const size = Number(trade.sz);
-
-      // Fed with EVERY perp trade regardless of notional — deliberately ahead of the
-      // minNotionalUsd filter below. A real TWAP suborder is typically far smaller than any
-      // single-trade large-trade threshold (e.g. a $10k/1h TWAP is ~$83 suborders), so
-      // filtering first would make the detector blind to exactly what it needs to see.
-      // observe() only accumulates now — detection happens on a timer via twapDetector.flush()
-      // (see market-watcher/index.ts and twap-confirm.ts), not inline here.
-      twapDetector.observe({
-        coin: trade.coin,
-        side: "buy",
-        address: classified.payload.buyerAddress,
-        price,
-        size,
-        time: trade.time,
-      });
-      twapDetector.observe({
-        coin: trade.coin,
-        side: "sell",
-        address: classified.payload.sellerAddress,
-        price,
-        size,
-        time: trade.time,
-      });
 
       if (classified.notionalUsd < minNotionalUsd) continue;
 

@@ -24,7 +24,7 @@ interface DepositsTableProps {
 
 // Global deposit monitoring (module 1) — detected on the Arbitrum Bridge2 contract, not tied
 // to a watched wallet, so every row's address can be promoted into tracking just like the
-// large-trades/likely-TWAPs tables (see globalDepositPayloadSchema).
+// large-trades/market-twaps tables (see globalDepositPayloadSchema).
 export function DepositsTable({
   bare = false,
   enabled = true,

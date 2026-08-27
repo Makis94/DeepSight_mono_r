@@ -39,7 +39,7 @@ interface CoinExclusionToggleProps {
 }
 
 // One shared user-level setting (users.excludeBtc/excludeEth) surfaced next to both the Large
-// trades and Likely TWAPs cards — BTC/ETH dominate both feeds' volume, so a user focused on
+// trades and TWAPs cards — BTC/ETH dominate both feeds' volume, so a user focused on
 // other coins can opt either one out here without losing large-trade/TWAP alerts entirely.
 export function CoinExclusionToggle({
   excludeBtc,

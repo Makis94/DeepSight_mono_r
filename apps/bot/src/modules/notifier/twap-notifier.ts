@@ -7,7 +7,7 @@ import {
   type Database,
   type ListenClient,
 } from "@hypertracker/db";
-import { NOTIFICATION_CHANNEL, type MarketTwapSuspectedPayload } from "@hypertracker/shared";
+import { NOTIFICATION_CHANNEL, type MarketTwapPayload } from "@hypertracker/shared";
 import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import type { Bot } from "grammy";
 import type { Logger } from "pino";
@@ -18,9 +18,8 @@ const CONSUMER = "bot-notifier-twaps";
 type EventRow = typeof events.$inferSelect;
 
 // null means this consumer has never run before — see trade-notifier.ts's getCursor doc
-// comment for why a brand-new consumer must not replay the entire pre-existing
-// market_twap_suspected history (thousands of rows by the time this notifier is first
-// deployed) by defaulting to 0.
+// comment for why a brand-new consumer must not replay the entire pre-existing market_twap
+// history by defaulting to 0.
 async function getCursor(db: Database): Promise<number | null> {
   const [row] = await db
     .select({ lastEventId: eventCursors.lastEventId })
@@ -49,7 +48,7 @@ async function resolveInitialCursor(db: Database): Promise<number> {
   const [head] = await db
     .select({ id: events.id })
     .from(events)
-    .where(eq(events.type, "market_twap_suspected"))
+    .where(eq(events.type, "market_twap"))
     .orderBy(desc(events.id))
     .limit(1);
   const cursor = head?.id ?? 0;
@@ -61,25 +60,35 @@ function shortAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-// Schema doc (marketTwapSuspectedPayloadSchema) guarantees every event of this type has
-// already been REST-confirmed against that address's real Hyperliquid TWAP fills (see
-// twap-confirm.ts) before it's published — there is no unconfirmed/"likely" variant to hedge
-// language for here.
-function formatTwapMessage(payload: MarketTwapSuspectedPayload, amountUsd: string): string {
+// Every event of this type is sourced directly from QuickNode's HyperCore TWAP dataset (see
+// marketTwapPayloadSchema) — real order-level data, not a heuristic guess. "activated" is the
+// moment the TWAP opens (what the user primarily asked to be notified about); "finished"/
+// "terminated" report the order's real accumulated total once it's done.
+function formatTwapMessage(payload: MarketTwapPayload, amountUsd: string): string {
   const amount = Math.round(Number(amountUsd)).toLocaleString("en-US");
   const sideLabel = payload.side === "buy" ? "🟢 Buy" : "🔴 Sell";
+
+  if (payload.status === "activated") {
+    return [
+      `🆕 TWAP opened`,
+      `${sideLabel} $${amount} (est.) ${payload.coin}, target size ${payload.size}, over ${payload.minutes}min`,
+      `Address: \`${shortAddress(payload.address)}\``,
+    ].join("\n");
+  }
+
+  const verb = payload.status === "finished" ? "finished" : "terminated early";
   return [
-    `✅ Confirmed TWAP`,
-    `${sideLabel} $${amount} ${payload.coin} across ${payload.occurrences} real suborders, avg $${payload.avgPrice}`,
+    `✅ TWAP ${verb}`,
+    `${sideLabel} $${amount} executed of ${payload.coin}, ${payload.executedSize}/${payload.size}`,
     `Address: \`${shortAddress(payload.address)}\``,
   ].join("\n");
 }
 
 async function notifyTwap(bot: Bot, db: Database, logger: Logger, event: EventRow): Promise<void> {
   const amountUsd = event.amountUsd ?? "0";
-  // Guaranteed by the producer (market-watcher publishEvent, type "market_twap_suspected") —
-  // the caller (processIfNew below) already filtered on event.type before reaching here.
-  const payload = event.payload as MarketTwapSuspectedPayload;
+  // Guaranteed by the producer (twap-watcher publishEvent, type "market_twap") — the caller
+  // (processIfNew below) already filtered on event.type before reaching here.
+  const payload = event.payload as MarketTwapPayload;
 
   // Only users with a currently-active subscription/trial ever get notified — see
   // activeSubscriptionCondition's doc comment (packages/db) for why this re-checks the date
@@ -118,10 +127,10 @@ async function notifyTwap(bot: Bot, db: Database, logger: Logger, event: EventRo
 const MAX_BACKLOG_REPLAY = 500;
 
 /**
- * Starts the likely-TWAP notifier: replays anything published while the bot was offline (via
- * the durable cursor), then listens live on the same Postgres NOTIFY channel the realtime WS
- * hub uses (apps/api RealtimeHub) — a second, independent consumer of the same event bus, not
- * a replacement for it. Returns a stop function.
+ * Starts the market-wide TWAP notifier: replays anything published while the bot was offline
+ * (via the durable cursor), then listens live on the same Postgres NOTIFY channel the
+ * realtime WS hub uses (apps/api RealtimeHub) — a second, independent consumer of the same
+ * event bus, not a replacement for it. Returns a stop function.
  */
 export async function startTwapNotifier(
   bot: Bot,
@@ -132,7 +141,7 @@ export async function startTwapNotifier(
   let cursor = await resolveInitialCursor(db);
 
   async function processIfNew(row: EventRow): Promise<void> {
-    if (row.type !== "market_twap_suspected") return;
+    if (row.type !== "market_twap") return;
     // Guards against the catch-up backlog and a live NOTIFY racing on the same event.
     if (row.id <= cursor) return;
     await notifyTwap(bot, db, logger, row);
@@ -143,7 +152,7 @@ export async function startTwapNotifier(
   const backlog = await db
     .select()
     .from(events)
-    .where(and(gt(events.id, cursor), eq(events.type, "market_twap_suspected")))
+    .where(and(gt(events.id, cursor), eq(events.type, "market_twap")))
     .orderBy(asc(events.id));
   if (backlog.length > MAX_BACKLOG_REPLAY) {
     const skipped = backlog[backlog.length - 1] as EventRow;

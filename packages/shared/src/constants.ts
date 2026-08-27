@@ -9,7 +9,7 @@ export const EVENT_TYPES = [
   "wallet_withdrawal",
   "wallet_funding",
   "market_trade",
-  "market_twap_suspected",
+  "market_twap",
   "global_deposit",
 ] as const;
 

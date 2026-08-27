@@ -13,11 +13,11 @@ interface AddressCellProps {
   color?: string | undefined;
   // Second identifying cue alongside color (see wallet-emoji.ts) — colors alone repeat once
   // wallet count nears MAX_WATCHED_WALLETS, so this lets a tracked wallet be recognized in
-  // any table row (Large trades, Likely TWAPs, Deposits, whale activity), not just the
+  // any table row (Large trades, TWAPs, Deposits, whale activity), not just the
   // tracker panel where it's assigned.
   emoji?: string | undefined;
   // "menu" (default) — click reveals an inline Copy/Track choice, used on the market-wide
-  // tables (Large trades, Likely TWAPs, Deposits) where a row's address is very likely new.
+  // tables (Large trades, TWAPs, Deposits) where a row's address is very likely new.
   // "copy" — click copies straight away, used on the whale-activity tables: every row there
   // is already a tracked wallet by construction (RealtimeHub only ever forwards wallet-tied
   // events for addresses this user already watches), so a "Track" choice would never do

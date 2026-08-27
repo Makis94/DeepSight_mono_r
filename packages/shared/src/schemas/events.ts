@@ -151,35 +151,41 @@ export const globalDepositPayloadSchema = z.object({
 });
 export type GlobalDepositPayload = z.infer<typeof globalDepositPayloadSchema>;
 
-// Hyperliquid's own TWAP data (userTwapHistory, userTwapSliceFills) is per-address only,
-// there is no market-wide TWAP feed — so this module first PATTERN-MATCHES over the public
-// `trades` feed (same address repeatedly trading the same coin on the same side, in similar
-// sizes, within a bounded time gap — see market-watcher's twap-heuristic.ts) to decide which
-// addresses are worth checking, then does a one-off REST lookup (getUserTwapSliceFills, see
-// twap-confirm.ts) against that specific address for matching real TWAP slice fills.
-//
-// The pattern-match alone is NOT a sufficient reason to show anything to a user — testing
-// showed it mostly flags addresses that aren't running a TWAP at all (an active trader or
-// market-maker repeating similar-sized trades looks identical to a TWAP on the public trades
-// tape alone). So every event of this type is only ever published once the REST lookup found
-// a real matching twapId for it — occurrences/avgPrice/notionalUsd/twapId here are always
-// aggregated from actual Hyperliquid TWAP fills, never estimated. A candidate the lookup
-// doesn't (yet) confirm is simply never published (see twap-confirm.ts) — there is no
-// unconfirmed/"likely" variant of this event.
-export const marketTwapSuspectedPayloadSchema = z.object({
-  type: z.literal("market_twap_suspected"),
+// Real, market-wide (ANY address, not just watched wallets) TWAP order lifecycle. Hyperliquid
+// itself has no market-wide TWAP feed (userTwapHistory/userTwapSliceFills are per-address
+// only) — same "no all-users endpoint" gap module 1 (deposits) has. This is sourced from
+// QuickNode's HyperCore Data Streams "TWAP" dataset instead (see CLAUDE.md Post-MVP section,
+// corrected 2026-08-27), which does stream every address's TWAP activity — no pattern-
+// matching or REST-confirmation step needed, unlike the old heuristic this replaced
+// (formerly marketTwapSuspectedPayloadSchema, apps/worker/src/market-watcher/twap-heuristic.ts
+// + twap-confirm.ts, now removed).
+export const marketTwapPayloadSchema = z.object({
+  type: z.literal("market_twap"),
+  // Hyperliquid's own TWAP order id — stable across this order's activated/finished/
+  // terminated transitions, so a client can group the 2-3 events of one real order together.
+  twapId: z.number(),
   coin: z.string(),
   side: tradeSide,
   address: walletAddressSchema,
-  notionalUsd: decimalString,
-  avgPrice: decimalString,
-  occurrences: z.number().int().positive(),
-  firstSeenAt: z.number(),
-  lastSeenAt: z.number(),
-  // The real Hyperliquid TWAP id the matching slice fills were grouped under.
-  twapId: z.number(),
+  // Target order size, in base-asset units (e.g. ETH) — not USD. Same shape as wallet_twap's
+  // `size`/`executedSize`.
+  size: decimalString,
+  executedSize: decimalString,
+  // USD notional actually executed so far, straight from QuickNode's dataset — 0 (or absent)
+  // at "activated" since nothing has filled yet, the real filled amount at "finished"/
+  // "terminated".
+  executedNotionalUsd: decimalString,
+  // Only present at "activated": size × the Hyperliquid mid price twap-watcher had cached at
+  // that moment, since executedNotionalUsd is still 0 and there is nothing else in this event
+  // to size the order by. This is what the user's $-threshold is checked against at the
+  // instant a TWAP opens; ignore it on later statuses and use executedNotionalUsd instead.
+  estimatedNotionalUsd: decimalString.optional(),
+  minutes: z.number().int().positive(),
+  reduceOnly: z.boolean(),
+  randomize: z.boolean(),
+  status: z.enum(["activated", "finished", "terminated"]),
 });
-export type MarketTwapSuspectedPayload = z.infer<typeof marketTwapSuspectedPayloadSchema>;
+export type MarketTwapPayload = z.infer<typeof marketTwapPayloadSchema>;
 
 export const eventPayloadSchema = z.discriminatedUnion("type", [
   walletOpenLongPayloadSchema,
@@ -192,7 +198,7 @@ export const eventPayloadSchema = z.discriminatedUnion("type", [
   walletWithdrawalPayloadSchema,
   walletFundingPayloadSchema,
   marketTradePayloadSchema,
-  marketTwapSuspectedPayloadSchema,
+  marketTwapPayloadSchema,
   globalDepositPayloadSchema,
 ]);
 

@@ -19,16 +19,16 @@ interface RealtimeClient {
   // once-per-connection semantics as watchedAddresses (see class doc comment).
   notifyTrades: boolean;
   minTradeAmount: number;
-  // Same snapshot semantics, for the heuristic "likely TWAP" alert (market_twap_suspected).
+  // Same snapshot semantics, for the market-wide TWAP alert (market_twap).
   notifyTwaps: boolean;
   minTwapAmount: number;
   // Same snapshot semantics, for global deposit monitoring (global_deposit) — see module 1
   // in CLAUDE.md and the deposit-monitoring-architecture skill.
   notifyDeposits: boolean;
   minDepositAmount: number;
-  // Same snapshot semantics — applies only to the market_trade/market_twap_suspected
-  // branches below, not to watched-wallet events (see users.excludeBtc/excludeEth doc
-  // comment in packages/db).
+  // Same snapshot semantics — applies only to the market_trade/market_twap branches below,
+  // not to watched-wallet events (see users.excludeBtc/excludeEth doc comment in
+  // packages/db).
   excludeBtc: boolean;
   excludeEth: boolean;
   // Heartbeat bookkeeping (see startHeartbeat) — flipped true on every pong, checked and
@@ -45,8 +45,8 @@ interface RealtimeClient {
 // of leaking.
 const HEARTBEAT_INTERVAL_MS = 25_000;
 
-// See users.excludeBtc/excludeEth doc comment (packages/db) — only market_trade/
-// market_twap_suspected fan-out consults this, watched-wallet events never do.
+// See users.excludeBtc/excludeEth doc comment (packages/db) — only market_trade/market_twap
+// fan-out consults this, watched-wallet events never do.
 function isCoinExcluded(client: RealtimeClient, coin: string | null): boolean {
   if (coin === "BTC") return client.excludeBtc;
   if (coin === "ETH") return client.excludeEth;
@@ -196,9 +196,9 @@ export class RealtimeHub {
       return;
     }
 
-    // Same global fan-out shape as market_trade, but this is a heuristic detection (see
-    // marketTwapSuspectedPayloadSchema) — not tied to a watched wallet either.
-    if (event.type === "market_twap_suspected") {
+    // Same global fan-out shape as market_trade — market_twap is never tied to a watched
+    // wallet either (see marketTwapPayloadSchema doc comment).
+    if (event.type === "market_twap") {
       const notionalUsd = Number(event.amountUsd ?? "0");
       for (const client of this.clients) {
         if (!client.notifyTwaps) continue;
@@ -210,8 +210,8 @@ export class RealtimeHub {
       return;
     }
 
-    // Same global fan-out shape as market_trade/market_twap_suspected — global_deposit is
-    // never tied to a watched wallet either (see globalDepositPayloadSchema doc comment).
+    // Same global fan-out shape as market_trade/market_twap — global_deposit is never tied
+    // to a watched wallet either (see globalDepositPayloadSchema doc comment).
     if (event.type === "global_deposit") {
       const notionalUsd = Number(event.amountUsd ?? "0");
       for (const client of this.clients) {

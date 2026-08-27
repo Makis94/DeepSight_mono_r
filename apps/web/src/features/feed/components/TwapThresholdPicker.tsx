@@ -1,11 +1,11 @@
 import { TWAP_THRESHOLD_PRESETS } from "@hypertracker/shared/schemas/settings";
 import type { RealtimeEvent } from "../../../lib/realtime-client.js";
 import { CoinExclusionToggle } from "./CoinExclusionToggle.js";
-import { LikelyTwapsTable } from "./LikelyTwapsTable.js";
+import { MarketTwapsTable } from "./MarketTwapsTable.js";
 
 interface TwapThresholdPickerProps {
   value: string | null;
-  // Whether likely-TWAP notifications are on at all — independent of `value` (see
+  // Whether market-wide TWAP notifications are on at all — independent of `value` (see
   // ThresholdPicker's equivalent prop doc for why the amount survives being turned off).
   enabled: boolean;
   isUpdating: boolean;
@@ -19,7 +19,7 @@ interface TwapThresholdPickerProps {
   onToggleExcludeBtc: (value: boolean) => void;
   onToggleExcludeEth: (value: boolean) => void;
   // This threshold's own matching-TWAPs feed, rendered nested at the bottom of this same
-  // card via LikelyTwapsTable's `bare` mode (see WhaleActivityTable for the same pattern).
+  // card via MarketTwapsTable's `bare` mode (see WhaleActivityTable for the same pattern).
   events: RealtimeEvent[];
   walletColors: Map<string, string>;
   walletEmojis: Map<string, string>;
@@ -49,7 +49,7 @@ export function TwapThresholdPicker({
   return (
     <section className="ht-section">
       <h2>TWAP alert threshold</h2>
-      <p>Alert me on confirmed TWAP activity above:</p>
+      <p>Alert me on real TWAP orders above:</p>
       <div className="ht-threshold-row">
         <button
           type="button"
@@ -80,7 +80,7 @@ export function TwapThresholdPicker({
         onToggleBtc={onToggleExcludeBtc}
         onToggleEth={onToggleExcludeEth}
       />
-      <LikelyTwapsTable
+      <MarketTwapsTable
         bare
         enabled={enabled}
         events={events}

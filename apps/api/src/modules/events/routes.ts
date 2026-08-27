@@ -7,9 +7,9 @@ import { requireActiveSubscription } from "../subscription/guard.js";
 // Global (not wallet-scoped) event types, fanned out to every opted-in/thresholded user
 // rather than to watchers of a specific address — see RealtimeHub.handleNotify for the
 // live-push version of this same split.
-const GLOBAL_EVENT_TYPES: ("market_trade" | "market_twap_suspected" | "global_deposit")[] = [
+const GLOBAL_EVENT_TYPES: ("market_trade" | "market_twap" | "global_deposit")[] = [
   "market_trade",
-  "market_twap_suspected",
+  "market_twap",
   "global_deposit",
 ];
 
@@ -88,7 +88,7 @@ export function eventsRoutes(app: FastifyInstance, db: Database): void {
           .from(events)
           .where(
             and(
-              eq(events.type, "market_twap_suspected"),
+              eq(events.type, "market_twap"),
               sql`${events.amountUsd}::numeric >= ${minTwapAmount}::numeric`,
             ),
           )

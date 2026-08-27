@@ -54,15 +54,37 @@ export function createMarketWatcherEnv(defaultHeartbeatPort: number) {
       // web UI (see packages/shared TRADE_THRESHOLD_PRESETS) so no preset is starved of
       // events upstream.
       MARKET_TRADE_MIN_NOTIONAL_USD: z.coerce.number().nonnegative().default(10_000),
-      // Same floor pattern, but for the heuristic "likely TWAP" detector (twap-heuristic.ts)
-      // — this is the accumulated notional across a matched suborder streak, not a single
-      // trade's notional, so it can reasonably sit at or below MARKET_TRADE_MIN_NOTIONAL_USD.
-      MARKET_TWAP_MIN_NOTIONAL_USD: z.coerce.number().nonnegative().default(10_000),
     })
     .parse(process.env);
 }
 
 export type MarketWatcherEnv = ReturnType<typeof createMarketWatcherEnv>;
+
+export function createTwapWatcherEnv(defaultHeartbeatPort: number) {
+  return baseEnvSchema
+    .extend({
+      HEARTBEAT_PORT: z.coerce.number().int().positive().default(defaultHeartbeatPort),
+      // Same "off by default, explicit opt-in" shape as USE_REAL_CMC/USE_REAL_ARBITRUM — with
+      // this false, twap-watcher runs idle and logs that clearly rather than crashing or
+      // silently pretending to work (there's no meaningful mock for "which TWAPs opened").
+      USE_REAL_QUICKNODE_TWAP: booleanEnvFlag(false),
+      // wss://<endpoint>.quiknode.pro/<token>/hypercore/ws — from the QuickNode dashboard's
+      // Hyperliquid Mainnet endpoint, "Hypercore" row, WSS tab. Requires a Build plan or
+      // higher (not available on Free trial) — see CLAUDE.md Post-MVP section.
+      QUICKNODE_HYPERCORE_WSS_URL: z.string().url().optional(),
+      // Global floor below which twap-watcher doesn't even write a market_twap event — same
+      // "fetch once above the lowest configured threshold, filter per-user downstream"
+      // pattern as MARKET_TRADE_MIN_NOTIONAL_USD/DEPOSIT_MIN_NOTIONAL_USD. Checked against
+      // sz × cached mid price at "activated" (nothing has executed yet at that point), and
+      // against the real executedNtl at "finished"/"terminated". Kept at or below the lowest
+      // preset a user can pick (see packages/shared TWAP_THRESHOLD_PRESETS) so no preset is
+      // starved of events upstream.
+      TWAP_MIN_NOTIONAL_USD: z.coerce.number().nonnegative().default(100_000),
+    })
+    .parse(process.env);
+}
+
+export type TwapWatcherEnv = ReturnType<typeof createTwapWatcherEnv>;
 
 export function createDepositWatcherEnv(defaultHeartbeatPort: number) {
   return baseEnvSchema

@@ -271,6 +271,9 @@ importers:
       '@hypertracker/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
       concurrently:
         specifier: ^9.1.2
         version: 9.2.4

@@ -5,6 +5,8 @@ import {
 } from "@hypertracker/shared/schemas/coins";
 import type { CoinPrice } from "@hypertracker/shared/schemas/coins";
 import { recentEventsResponseSchema } from "@hypertracker/shared/schemas/events";
+import { marketTwapSliceFillsResponseSchema } from "@hypertracker/shared/schemas/market-twaps";
+import type { TwapSliceFill } from "@hypertracker/shared/schemas/market-twaps";
 import type { SettingsResponse } from "@hypertracker/shared/schemas/settings";
 import { z } from "zod";
 import { watchedWalletResponseSchema } from "@hypertracker/shared/schemas/watched-wallet";
@@ -260,6 +262,22 @@ export async function listRecentEvents(): Promise<RealtimeEvent[]> {
   return recentEventsResponseSchema.parse(await response.json()).events;
 }
 
+// On-demand "view suborders" drill-down for one market_twap row (see MarketTwapsTable) —
+// fetched only when the user expands a row, not preloaded, since it's a live Hyperliquid
+// REST call on the backend (apps/api market-twaps routes), not our own stored data.
+export async function fetchTwapSliceFills(
+  twapId: number,
+  address: string,
+): Promise<TwapSliceFill[]> {
+  const response = await authFetch(
+    `${API_URL}/market-twaps/${twapId}/slice-fills?address=${encodeURIComponent(address)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`failed to load twap slice fills: ${response.status}`);
+  }
+  return marketTwapSliceFillsResponseSchema.parse(await response.json()).fills;
+}
+
 // amount and enabled are each optional but at least one must be set — picking a preset sends
 // only { amount }, the "Off" toggle sends only { enabled: false } (see updateTradeThresholdBodySchema).
 export async function updateTradeThreshold({
@@ -306,7 +324,7 @@ export async function updateTwapThreshold({
   return (await response.json()) as Settings;
 }
 
-// Shared across the Large trades and Likely TWAPs tables — see users.excludeBtc/excludeEth
+// Shared across the Large trades and TWAPs tables — see users.excludeBtc/excludeEth
 // doc comment (packages/db) for why this is one setting, not two per-table toggles.
 export async function updateCoinExclusions({
   excludeBtc,
