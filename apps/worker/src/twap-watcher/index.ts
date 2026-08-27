@@ -19,6 +19,16 @@ function sideFromHyperliquid(side: string): "buy" | "sell" {
   return side === "B" ? "buy" : "sell";
 }
 
+// Same spot-exclusion convention as every other watcher's isPerpFill/isPerpTrade (wallet-
+// watcher, market-watcher, common-wallet-tracker classify.ts) — Hyperliquid identifies a
+// spot asset by a numeric index ("@107") or a "BASE/QUOTE" pair rather than a ticker, and
+// this project has consistently chosen not to solve that name-resolution problem anywhere
+// else, so TWAPs on spot assets are excluded here too rather than showing a raw "@107".
+// HIP-3 dex-scoped perps ("xyz:MSTR") are unaffected — they contain ":" not "/".
+function isPerpCoin(coin: string): boolean {
+  return !coin.startsWith("@") && !coin.includes("/");
+}
+
 const env = createTwapWatcherEnv(9107);
 const log = createLogger(env.NODE_ENV, env.LOG_LEVEL).child({ worker: WORKER_ID });
 const db = createDb(env.DATABASE_URL);
@@ -49,6 +59,15 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
   async function handleTwapEvent(event: QuicknodeTwapEvent): Promise<void> {
     state.lastEventAt = Date.now();
     const { twap_id: twapId, status, state: order } = event;
+
+    // The order failed to ever place (e.g. insufficient margin) — see quicknode-schemas.ts
+    // doc comment. Nothing opened and nothing executed, so there's nothing worth a row for.
+    if (status === "error" || status === "waitingForTrigger") {
+      log.debug({ twapId, coin: order.coin, status }, "twap order not yet live — skipping");
+      return;
+    }
+    if (!isPerpCoin(order.coin)) return;
+
     const side = sideFromHyperliquid(order.side);
     const executedNotionalUsd = Math.abs(Number(order.executedNtl));
 
@@ -57,6 +76,15 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
     if (status === "activated") {
       const midPrice = midPrices.get(order.coin);
       if (midPrice === undefined) {
+        // Observed live (2026-08-27) for every "{dex}:{coin}" HIP-3 builder-deployed perp
+        // (e.g. "xyz:MSTR") — the default allMids subscription below has no `dex` param, so
+        // it only covers the main perp dex. Getting per-dex mids needs a separate
+        // `{type:"allMids", dex}` subscription per HIP-3 dex, which isn't implemented yet —
+        // not done blindly because the resulting `mids` map's key format for a dex-scoped
+        // subscription (bare symbol vs "{dex}:{coin}") isn't verified against
+        // hyperliquid-docs MCP. Known gap: such a TWAP's "activated" transition is skipped
+        // (this warning), but its "finished"/"terminated" transition still publishes
+        // normally since that uses the real executedNtl, not this cache.
         log.warn(
           { twapId, coin: order.coin },
           "no cached mid price yet for newly activated twap — skipping threshold check for this transition",
