@@ -22,9 +22,13 @@ import { z } from "zod";
 //  - a trigger/conditional order not yet live: `status: "waitingForTrigger"`, alongside a
 //    non-null `state.trigger`/`state.stopPx` (both null on a normal TWAP) — sz/executedSz/
 //    executedNtl are all still 0 at this point, nothing has opened yet.
-// Both are treated as their own status below with nothing to notify on yet — twap-watcher/
-// index.ts skips them (no notional check, no publish) rather than forcing them through the
-// activated/finished/terminated schema.
+//  - a stop-triggered order that ended early: `status: "stopped"`, with real (non-zero)
+//    executedSz/executedNtl from however much ran before the stop hit. Unlike the two above,
+//    something DID happen here — normalized to "terminated" (packages/shared
+//    marketTwapPayloadSchema has no separate "stopped" state) since both mean "ended before
+//    running its full course," and twap-watcher/index.ts publishes it normally.
+// "error"/"waitingForTrigger" are the only two treated as their own status with nothing to
+// notify on yet — twap-watcher/index.ts skips those (no notional check, no publish).
 //
 // extractTwapEvents still logs+skips (never throws) any block entry that matches neither
 // shape, so a future new variant is visible in logs rather than silently dropped.
@@ -47,6 +51,7 @@ export type QuicknodeTwapState = z.infer<typeof quicknodeTwapStateSchema>;
 // switch on a flat string.
 const quicknodeTwapStatusSchema = z.union([
   z.enum(["activated", "finished", "terminated", "waitingForTrigger"]),
+  z.literal("stopped").transform(() => "terminated" as const),
   z.object({ error: z.string() }).transform(() => "error" as const),
 ]);
 
