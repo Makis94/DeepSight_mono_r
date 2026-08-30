@@ -68,7 +68,7 @@ export function DepositsTable({
       )}
       {!collapsed && enabled && visibleEvents.length > 0 && (
         <div className="ht-table-scroll">
-          <table className="ht-table">
+          <table className="ht-table ht-table-addr-left">
             <thead>
               <tr>
                 <th className="ht-col-address">Address</th>

@@ -1,0 +1,262 @@
+/* Guide page — explains tracking tables vs. live tracking. Mobile-first: sections stack
+   image-then-copy in a single column; the alternating left/right zigzag only kicks in at
+   the same tablet/desktop breakpoint feed.css/header.css use (860px), where it reads well
+   as two columns per row. */
+
+.ht-guide-page {
+  min-height: 100vh;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.25rem 0.85rem 2rem;
+}
+
+.ht-guide-back {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.4rem 0;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+}
+
+.ht-guide-back:hover {
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+.ht-guide-heading {
+  font-size: 1.3rem;
+  letter-spacing: 0.04em;
+  margin: 0 0 1.5rem;
+  text-shadow:
+    0 0 8px var(--accent-glow),
+    0 0 20px var(--accent-glow);
+}
+
+/* Intro — full-fidelity product pitch above the per-feature sections. Full width,
+   never enters the desktop zigzag. The copy is overlaid on the video itself, anchored
+   to the bottom edge over a dark scrim so it stays readable regardless of frame. */
+.ht-guide-intro {
+  position: relative;
+  margin: 0 0 3rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ht-guide-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 16rem;
+  object-fit: cover;
+  background: var(--bg-raised);
+}
+
+.ht-guide-intro-copy {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3rem 1rem 1rem;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 0, 0, 0.6) 55%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.ht-guide-intro-copy h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0 0 0.4rem;
+  color: #fff;
+}
+
+.ht-guide-intro-copy p {
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 0 0 0.4rem;
+}
+
+.ht-guide-intro-copy p:last-child {
+  margin-bottom: 0;
+}
+
+/* Typewriter caret — blinking accent bar trailing the text as it types on load. */
+.ht-guide-caret {
+  display: inline-block;
+  margin-left: 1px;
+  color: var(--accent);
+  font-weight: 400;
+  text-shadow: 0 0 8px var(--accent-glow);
+  animation: ht-guide-caret-blink 1.05s step-end infinite;
+}
+
+@keyframes ht-guide-caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ht-guide-caret {
+    display: none;
+  }
+}
+
+@media (min-width: 860px) {
+  .ht-guide-video {
+    aspect-ratio: 21 / 9;
+  }
+
+  .ht-guide-intro-copy {
+    padding: 4rem 1.5rem 1.5rem;
+  }
+
+  .ht-guide-intro-copy p {
+    font-size: 0.95rem;
+  }
+}
+
+.ht-guide-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+/* Scroll-in reveal: media and copy fade + rise into place once the row enters the
+   viewport (JS toggles .is-visible — see useInView). Copy trails the media slightly. */
+.ht-guide-row > * {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.55s ease,
+    transform 0.55s ease;
+}
+
+.ht-guide-row .ht-guide-copy {
+  transition-delay: 0.12s;
+}
+
+.ht-guide-row.is-visible > * {
+  opacity: 1;
+  transform: none;
+}
+
+.ht-guide-video {
+  animation: ht-guide-fade-in 0.7s ease both;
+}
+
+@keyframes ht-guide-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ht-guide-row > *,
+  .ht-guide-row.is-visible > * {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .ht-guide-video {
+    animation: none;
+  }
+}
+
+.ht-guide-media {
+  flex-shrink: 0;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ht-guide-media-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Real screenshot — full column width on mobile so UI text stays legible; keeps its
+   own aspect ratio. */
+.ht-guide-shot {
+  flex-shrink: 0;
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ht-guide-copy h2 {
+  font-size: 1rem;
+  margin: 0 0 0.6rem;
+  color: var(--text);
+}
+
+.ht-guide-copy p {
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 0.6rem;
+}
+
+.ht-guide-copy p:last-child {
+  margin-bottom: 0;
+}
+
+@media (min-width: 860px) {
+  .ht-guide-row {
+    flex-direction: row;
+    /* the media column is deliberately the smaller of the two now (flex 0 0 38%) and
+       centers itself against the taller copy column rather than stretching to match it. */
+    align-items: flex-start;
+    gap: 2.5rem;
+  }
+
+  .ht-guide-row-reverse {
+    flex-direction: row-reverse;
+  }
+
+  .ht-guide-copy {
+    flex: 1 1 0;
+  }
+
+  .ht-guide-media {
+    flex: 0 0 56%;
+    max-width: 620px;
+    aspect-ratio: 16 / 10;
+    min-height: 0;
+    align-self: flex-start;
+  }
+
+  .ht-guide-shot {
+    flex: 0 0 56%;
+    max-width: 620px;
+    align-self: flex-start;
+  }
+}

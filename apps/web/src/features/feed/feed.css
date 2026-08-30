@@ -609,6 +609,27 @@
   margin-left: -0.825rem;
 }
 
+/* Deposits table opts its Address column back out of the centered treatment above — with
+   this table's column widths the centered address reads as detached from its left-aligned
+   ADDRESS header. Compound selector (0,3,1) outranks the centering rule (0,2,1) and the
+   >=860px `.ht-table td` overrides. */
+.ht-table.ht-table-addr-left th.ht-col-address,
+.ht-table.ht-table-addr-left td.ht-col-address {
+  text-align: left;
+}
+
+.ht-table.ht-table-addr-left td.ht-col-address .ht-addr-cell,
+.ht-table.ht-table-addr-left td.ht-col-address > .ht-addr {
+  margin-left: 0;
+}
+
+/* Drop the fixed 1.65rem emoji gutter here too — otherwise the address TEXT still starts a
+   slot-width right of the ADDRESS header even with the cell left-aligned. Deposits are
+   global addresses, rarely tracked; a tracked one keeps its accent color as the cue. */
+.ht-table.ht-table-addr-left td.ht-col-address .ht-wallet-emoji-slot {
+  display: none;
+}
+
 /* Every row carries a stable key={event.id} (see FeedPage.tsx), so a CSS animation applied
    unconditionally here only ever plays when a row's DOM node is first created — React
    reuses the existing node (same key) for rows that just shift position as newer ones get
