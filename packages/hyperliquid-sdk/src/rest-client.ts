@@ -126,9 +126,9 @@ export type AllMidsResponse = z.infer<typeof allMidsResponseSchema>;
  *
  * Info request weight 2 (source: hyperliquid-docs MCP, rate-limits-and-user-limits page,
  * verified: 2026-08-30) — cheap enough to poll on a short interval. Used by twap-watcher
- * instead of a second `allMids` WS connection: Hyperliquid drops a duplicate `allMids`
- * subscription opened from the same IP as market-watcher's, which silently starved
- * twap-watcher of activation-notional prices.
+ * instead of a second `allMids` WS connection: a duplicate `allMids` subscription opened
+ * from the same IP as market-watcher's was observed in prod to get dropped repeatedly
+ * within seconds (not documented behaviour), which starved twap-watcher of prices.
  *
  * The key format for a dex-scoped response ("SHEIN" vs "xyz:SHEIN") is not pinned down by
  * the docs, so callers looking up a `{dex}:{coin}` name should try both forms.

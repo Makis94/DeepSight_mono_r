@@ -56,8 +56,9 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
   const network = process.env["HYPERLIQUID_NETWORK"] === "testnet" ? "testnet" : "mainnet";
 
   // Mid prices via Hyperliquid's REST allMids (polled), NOT a second allMids WS — a duplicate
-  // allMids subscription from the same IP as market-watcher's gets dropped by Hyperliquid,
-  // which is what silently starved this worker of activation prices (see mid-price-cache.ts).
+  // allMids subscription from the same IP as market-watcher's was observed in prod to get
+  // dropped within seconds, repeatedly, which starved this worker of activation prices (see
+  // mid-price-cache.ts).
   const midPrices = new MidPriceCache(network, log.child({ source: "allMids-rest" }));
   midPrices.start();
 
