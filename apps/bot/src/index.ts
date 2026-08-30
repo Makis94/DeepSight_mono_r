@@ -2,6 +2,7 @@ import { createDb, createListenClient } from "@hypertracker/db";
 import { createBot } from "./bot.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
+import { startHealthWatchdog } from "./modules/health-watchdog/index.js";
 import { startDepositNotifier } from "./modules/notifier/deposit-notifier.js";
 import { startTradeNotifier } from "./modules/notifier/trade-notifier.js";
 import { startTwapNotifier } from "./modules/notifier/twap-notifier.js";
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   await startDepositNotifier(bot, db, listenClient, logger);
   await startTradeNotifier(bot, db, listenClient, logger);
   await startTwapNotifier(bot, db, listenClient, logger);
+  startHealthWatchdog(bot, db, logger);
   await bot.start({
     onStart: (info) => {
       logger.info({ username: info.username }, "bot started");
