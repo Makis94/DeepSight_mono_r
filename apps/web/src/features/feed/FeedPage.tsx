@@ -400,13 +400,28 @@ export function FeedPage() {
   function isCoinExcludedByUser(coin: string | null): boolean {
     return (coin === "BTC" && excludeBtc) || (coin === "ETH" && excludeEth);
   }
+  // Mirror the server-side amount gate (GET /events backfill + RealtimeHub fan-out) on the
+  // client. Without this, buffered/backfilled events below a *newly raised* threshold keep
+  // showing until they age out of state — the backfill on a threshold change (reconnectKey)
+  // even re-adds sub-threshold history when the threshold is lowered and then raised again.
+  // When notifications are off the amount is irrelevant (the table renders its "off" state),
+  // so don't gate then.
+  const tradeFloor = notifyTrades && minTradeAmount !== null ? Number(minTradeAmount) : 0;
+  const twapFloor = notifyTwaps && minTwapAmount !== null ? Number(minTwapAmount) : 0;
+  const depositFloor = notifyDeposits && minDepositAmount !== null ? Number(minDepositAmount) : 0;
+  const atLeast = (min: number) => (event: RealtimeEvent) => Number(event.amountUsd ?? "0") >= min;
+
   const filteredMarketEvents = marketEvents
     .filter(
       (event) =>
         selectedCoins.length === 0 || (event.coin !== null && selectedCoins.includes(event.coin)),
     )
-    .filter((event) => !isCoinExcludedByUser(event.coin));
-  const filteredTwapEvents = twapEvents.filter((event) => !isCoinExcludedByUser(event.coin));
+    .filter((event) => !isCoinExcludedByUser(event.coin))
+    .filter(atLeast(tradeFloor));
+  const filteredTwapEvents = twapEvents
+    .filter((event) => !isCoinExcludedByUser(event.coin))
+    .filter(atLeast(twapFloor));
+  const filteredDepositEvents = depositEvents.filter(atLeast(depositFloor));
 
   return (
     <main className="ht-page">
@@ -501,7 +516,7 @@ export function FeedPage() {
             isUpdating={isUpdatingDepositThreshold}
             onSelect={(preset) => void handleSelectDepositThreshold(preset)}
             onToggleOff={() => void handleToggleDepositNotify()}
-            events={depositEvents}
+            events={filteredDepositEvents}
             walletColors={walletColors}
             walletEmojis={walletEmojis}
             trackedAddresses={trackedAddresses}
