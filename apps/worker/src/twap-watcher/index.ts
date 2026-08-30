@@ -1,5 +1,4 @@
 import { createDb, type NewEvent } from "@hypertracker/db";
-import { HYPERLIQUID_WS_URLS, HyperliquidWsClient } from "@hypertracker/hyperliquid-sdk";
 import type { MarketTwapPayload } from "@hypertracker/shared";
 import { createTwapWatcherEnv } from "../shared/env.js";
 import { startHeartbeatServer, type HeartbeatState } from "../shared/heartbeat.js";
@@ -37,6 +36,10 @@ function toPayloadStatus(status: string): "activated" | "finished" | "terminated
   return "terminated";
 }
 
+// How stale a REST allMids snapshot may be before it's treated as "no price" at activation.
+// The cache polls every 3s, so anything past this means polling itself is failing.
+const MAX_MID_AGE_MS = 30_000;
+
 const env = createTwapWatcherEnv(9107);
 const log = createLogger(env.NODE_ENV, env.LOG_LEVEL).child({ worker: WORKER_ID });
 const db = createDb(env.DATABASE_URL);
@@ -52,17 +55,11 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
 } else {
   const network = process.env["HYPERLIQUID_NETWORK"] === "testnet" ? "testnet" : "mainnet";
 
-  // Own connection to Hyperliquid's own public allMids feed, independent of market-watcher's
-  // (each worker process must not depend on another one's liveness) — used only to estimate
-  // notional at TWAP activation (see mid-price-cache.ts doc comment).
-  const midPrices = new MidPriceCache();
-  const pricesClient = new HyperliquidWsClient({
-    url: HYPERLIQUID_WS_URLS[network],
-    logger: log.child({ source: "allMids" }),
-  });
-  pricesClient.on("allMids", midPrices.createAllMidsHandler(log));
-  pricesClient.subscribe({ type: "allMids" });
-  pricesClient.connect();
+  // Mid prices via Hyperliquid's REST allMids (polled), NOT a second allMids WS — a duplicate
+  // allMids subscription from the same IP as market-watcher's gets dropped by Hyperliquid,
+  // which is what silently starved this worker of activation prices (see mid-price-cache.ts).
+  const midPrices = new MidPriceCache(network, log.child({ source: "allMids-rest" }));
+  midPrices.start();
 
   async function handleTwapEvent(event: QuicknodeTwapEvent): Promise<void> {
     state.lastEventAt = Date.now();
@@ -95,32 +92,33 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
 
     if (!isPerpCoin(order.coin)) return;
 
+    // Builder-deployed perp ("{dex}:{coin}") — start polling that dex's mids so the next
+    // transition (and ideally this one) can be priced. Its prices are never in the main dex.
+    const colon = order.coin.indexOf(":");
+    if (colon !== -1) midPrices.ensureDex(order.coin.slice(0, colon));
+
     const side = sideFromHyperliquid(order.side);
     const executedNotionalUsd = Math.abs(Number(order.executedNtl));
 
     let notionalUsd: number;
     let estimatedNotionalUsd: string | undefined;
     if (status === "activated") {
-      const midPrice = midPrices.get(order.coin);
-      if (midPrice === undefined) {
-        // Observed live (2026-08-27) for every "{dex}:{coin}" HIP-3 builder-deployed perp
-        // (e.g. "xyz:MSTR") — the default allMids subscription below has no `dex` param, so
-        // it only covers the main perp dex. Getting per-dex mids needs a separate
-        // `{type:"allMids", dex}` subscription per HIP-3 dex, which isn't implemented yet —
-        // not done blindly because the resulting `mids` map's key format for a dex-scoped
-        // subscription (bare symbol vs "{dex}:{coin}") isn't verified against
-        // hyperliquid-docs MCP. Known gap: such a TWAP's "activated" transition is skipped
-        // (this warning), but its "finished"/"terminated" transition still publishes
-        // normally since that uses the real executedNtl, not this cache.
+      const mid = midPrices.get(order.coin);
+      if (mid !== undefined && mid.ageMs <= MAX_MID_AGE_MS) {
+        const estimated = Math.abs(Number(order.sz)) * mid.price;
+        notionalUsd = estimated;
+        estimatedNotionalUsd = estimated.toString();
+      } else {
+        // No fresh mid — a HIP-3 dex we've only just started polling, or the REST poll is
+        // failing. Do NOT silently drop the open like the old WS-cache path did: publish it
+        // at the base threshold (so it still reaches subscribers) with no $ estimate. The
+        // follow-up finished/terminated event carries the real executed notional.
         log.warn(
-          { twapId, coin: order.coin },
-          "no cached mid price yet for newly activated twap — skipping threshold check for this transition",
+          { twapId, coin: order.coin, hadStalePrice: mid !== undefined },
+          "no fresh mid price for activated twap — publishing the open at base threshold, no estimate",
         );
-        return;
+        notionalUsd = env.TWAP_MIN_NOTIONAL_USD;
       }
-      const estimated = Math.abs(Number(order.sz)) * midPrice;
-      notionalUsd = estimated;
-      estimatedNotionalUsd = estimated.toString();
     } else {
       notionalUsd = executedNotionalUsd;
     }

@@ -111,6 +111,45 @@ export async function getUserTwapSliceFills(
   return userTwapSliceFillsResponseSchema.parse(json);
 }
 
+// Flat { coin: midPriceDecimalString } map — note this REST response is NOT wrapped in
+// { mids: ... } the way the `allMids` WS channel's payload is. source: hyperliquid-docs MCP
+// (https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint,
+// "Retrieve mids for all coins"), verified: 2026-08-30.
+const allMidsResponseSchema = z.record(z.string(), z.string());
+export type AllMidsResponse = z.infer<typeof allMidsResponseSchema>;
+
+/**
+ * POST {baseUrl}/info { "type": "allMids", dex? } — current mid price (decimal string) for
+ * every coin on one perp dex. `dex` defaults to the empty string = the first/main perp dex;
+ * pass a builder-deployed dex name (e.g. "xyz") to get that HIP-3 dex's mids, which the
+ * main-dex response does NOT include. Spot mids are only present on the main dex.
+ *
+ * Info request weight 2 (source: hyperliquid-docs MCP, rate-limits-and-user-limits page,
+ * verified: 2026-08-30) — cheap enough to poll on a short interval. Used by twap-watcher
+ * instead of a second `allMids` WS connection: Hyperliquid drops a duplicate `allMids`
+ * subscription opened from the same IP as market-watcher's, which silently starved
+ * twap-watcher of activation-notional prices.
+ *
+ * The key format for a dex-scoped response ("SHEIN" vs "xyz:SHEIN") is not pinned down by
+ * the docs, so callers looking up a `{dex}:{coin}` name should try both forms.
+ */
+export async function getAllMids(baseUrl: string, dex?: string): Promise<AllMidsResponse> {
+  const response = await fetch(`${baseUrl}/info`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dex ? { type: "allMids", dex } : { type: "allMids" }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Hyperliquid allMids request failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const json: unknown = await response.json();
+  return allMidsResponseSchema.parse(json);
+}
+
 export interface PositionLeverageAndMargin {
   leverageType: "cross" | "isolated";
   leverageValue: number;
