@@ -4,6 +4,7 @@ import { LoginWidget } from "./auth/LoginWidget.js";
 import { useMiniAppAuth } from "./auth/useMiniAppAuth.js";
 import { Header } from "./components/Header.js";
 import { FeedPage } from "./features/feed/FeedPage.js";
+import { GuidePage } from "./features/guide/GuidePage.js";
 import { SubscriptionGate } from "./features/subscription/SubscriptionGate.js";
 import { SubscriptionPopup } from "./features/subscription/SubscriptionPopup.js";
 import { useSubscription } from "./features/subscription/useSubscription.js";
@@ -19,6 +20,7 @@ export function App() {
   // App path doesn't need this: useMiniAppAuth's own "Signing in…" branch below covers it.
   const [isBootstrapping, setIsBootstrapping] = useState(!isMiniApp());
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const handleAuthenticated = useCallback((newSession: Session) => {
     setSession(newSession);
   }, []);
@@ -87,14 +89,21 @@ export function App() {
           session={session}
           onSignOut={handleSignOut}
           onOpenSubscription={() => setIsSubscriptionOpen(true)}
+          onOpenGuide={() => setIsGuideOpen(true)}
         />
-        {subscription.status === "loading" && <p className="ht-signing-in">Loading…</p>}
-        {hasAccess && <FeedPage />}
-        {subscription.status === "none" && <SubscriptionGate subscription={subscription} />}
-        {subscription.status === "error" && (
-          <p className="ht-signing-in">
-            Couldn't check subscription status — check your connection and reload.
-          </p>
+        {isGuideOpen ? (
+          <GuidePage onClose={() => setIsGuideOpen(false)} />
+        ) : (
+          <>
+            {subscription.status === "loading" && <p className="ht-signing-in">Loading…</p>}
+            {hasAccess && <FeedPage />}
+            {subscription.status === "none" && <SubscriptionGate subscription={subscription} />}
+            {subscription.status === "error" && (
+              <p className="ht-signing-in">
+                Couldn't check subscription status — check your connection and reload.
+              </p>
+            )}
+          </>
         )}
         {isSubscriptionOpen && (
           <SubscriptionPopup

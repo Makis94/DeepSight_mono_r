@@ -7,6 +7,15 @@ export interface TelegramWebApp {
   // Telegram's in-app webview blocks plain window.open/target=_blank for external URLs —
   // this is the documented way to hand off to the system browser from inside a Mini App.
   openLink?: (url: string) => void;
+  // Native back-navigation chrome — see CLAUDE.md's dual-context rule: in-page "back"
+  // controls (GuidePage's own "← Back" link) are for the standalone site only, this is the
+  // Mini App equivalent (useMiniAppBackButton.ts).
+  BackButton?: {
+    show: () => void;
+    hide: () => void;
+    onClick: (callback: () => void) => void;
+    offClick: (callback: () => void) => void;
+  };
 }
 
 declare global {

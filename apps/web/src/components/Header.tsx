@@ -7,9 +7,10 @@ interface HeaderProps {
   session: Session;
   onSignOut: () => void;
   onOpenSubscription: () => void;
+  onOpenGuide: () => void;
 }
 
-export function Header({ session, onSignOut, onOpenSubscription }: HeaderProps) {
+export function Header({ session, onSignOut, onOpenSubscription, onOpenGuide }: HeaderProps) {
   const displayName = session.username ? `@${session.username}` : (session.firstName ?? "Trader");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   // Starts false and only ever flips true on a real onLoad — the letter is the base layer
@@ -74,6 +75,17 @@ export function Header({ session, onSignOut, onOpenSubscription }: HeaderProps) 
 
         {isMenuOpen && (
           <div className="ht-account-menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              className="ht-account-menu-item"
+              onClick={() => {
+                setIsMenuOpen(false);
+                onOpenGuide();
+              }}
+            >
+              Guide
+            </button>
             <button
               type="button"
               role="menuitem"
