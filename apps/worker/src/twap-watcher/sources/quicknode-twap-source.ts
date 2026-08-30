@@ -6,6 +6,11 @@ export interface QuicknodeTwapSourceOptions {
   url: string;
   logger: Logger;
   onEvent: (event: QuicknodeTwapEvent) => void;
+  // Fired for every WS frame received, before parsing — including the near-constant stream of
+  // empty blocks. Lets the caller keep a liveness timestamp fresh so "socket open but not a
+  // single frame in N seconds" (a silently dead subscription) is distinguishable from "socket
+  // open, feed healthy, just no TWAP transitions right now".
+  onFrame?: () => void;
   onOpen?: () => void;
   onClose?: () => void;
   minReconnectDelayMs?: number;
@@ -78,6 +83,8 @@ export class QuicknodeTwapSource {
   }
 
   private handleMessage(raw: RawData): void {
+    this.options.onFrame?.();
+
     const text = Array.isArray(raw)
       ? Buffer.concat(raw).toString("utf8")
       : Buffer.isBuffer(raw)
