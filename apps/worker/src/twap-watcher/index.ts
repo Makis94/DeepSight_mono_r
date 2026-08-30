@@ -7,7 +7,7 @@ import { createLogger } from "../shared/logger.js";
 import { publishEvent } from "../shared/publish-event.js";
 import { MidPriceCache } from "./mid-price-cache.js";
 import { QuicknodeTwapSource } from "./sources/quicknode-twap-source.js";
-import type { QuicknodeTwapEvent } from "./quicknode-schemas.js";
+import { RECOGNIZED_TWAP_STATUSES, type QuicknodeTwapEvent } from "./quicknode-schemas.js";
 
 const WORKER_ID = "twap-watcher";
 
@@ -27,6 +27,14 @@ function sideFromHyperliquid(side: string): "buy" | "sell" {
 // HIP-3 dex-scoped perps ("xyz:MSTR") are unaffected — they contain ":" not "/".
 function isPerpCoin(coin: string): boolean {
   return !coin.startsWith("@") && !coin.includes("/");
+}
+
+// packages/shared marketTwapPayloadSchema only persists these three. "activated" opens a row
+// in the web table; every other status that carries real execution is an end-of-life update.
+function toPayloadStatus(status: string): "activated" | "finished" | "terminated" {
+  if (status === "activated") return "activated";
+  if (status === "finished") return "finished";
+  return "terminated";
 }
 
 const env = createTwapWatcherEnv(9107);
@@ -66,6 +74,25 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
       log.debug({ twapId, coin: order.coin, status }, "twap order not yet live — skipping");
       return;
     }
+
+    // A status string outside everything we've seen from QuickNode so far. Don't drop it
+    // silently — log the raw value (so a vocabulary change is visible in prod immediately),
+    // then fall through only if it carries real execution, treated as a terminal update.
+    if (!RECOGNIZED_TWAP_STATUSES.has(status)) {
+      const executed = Math.abs(Number(order.executedNtl));
+      if (!Number.isFinite(executed) || executed === 0) {
+        log.warn(
+          { twapId, coin: order.coin, status },
+          "unrecognized quicknode twap status with nothing executed — skipping",
+        );
+        return;
+      }
+      log.warn(
+        { twapId, coin: order.coin, status, executedNtl: order.executedNtl },
+        "unrecognized quicknode twap status — publishing as a terminal update",
+      );
+    }
+
     if (!isPerpCoin(order.coin)) return;
 
     const side = sideFromHyperliquid(order.side);
@@ -113,7 +140,7 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
       minutes: order.minutes,
       reduceOnly: order.reduceOnly,
       randomize: order.randomize,
-      status,
+      status: toPayloadStatus(status),
     };
 
     const occurredAt = order.timestamp ? new Date(order.timestamp) : new Date();
@@ -142,6 +169,13 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
       void handleTwapEvent(event).catch((err: unknown) => {
         log.error({ err }, "unhandled error processing quicknode twap event");
       });
+    },
+    // Every frame (mostly empty blocks) keeps the heartbeat's staleness clock fresh — TWAP
+    // transitions are far too sporadic to use as the liveness signal, so before this the
+    // heartbeat went stale within 60s of a working connection. Now a stale timestamp means
+    // the feed itself stopped, which is the thing worth alerting on.
+    onFrame: () => {
+      state.lastEventAt = Date.now();
     },
     onOpen: () => {
       state.isHealthy = true;

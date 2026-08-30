@@ -30,8 +30,12 @@ import { z } from "zod";
 // "error"/"waitingForTrigger" are the only two treated as their own status with nothing to
 // notify on yet — twap-watcher/index.ts skips those (no notional check, no publish).
 //
-// extractTwapEvents still logs+skips (never throws) any block entry that matches neither
-// shape, so a future new variant is visible in logs rather than silently dropped.
+// Any status string we HAVEN'T catalogued still parses (bare-string catch-all in
+// quicknodeTwapStatusSchema): index.ts logs the raw value at warn and publishes it as a
+// terminal update if it carries execution, rather than the strict enum failing the whole
+// event parse and dropping a real transition. extractTwapEvents also logs+skips (never
+// throws) any block entry that fails the rest of the shape, so a structural change is
+// visible in logs rather than silently dropped.
 export const quicknodeTwapStateSchema = z.object({
   coin: z.string(),
   user: z.string(),
@@ -49,10 +53,29 @@ export type QuicknodeTwapState = z.infer<typeof quicknodeTwapStateSchema>;
 // See module doc comment — a failed-to-place order reports `status` as `{error: message}`
 // instead of a bare string; normalized to the literal "error" here so callers only ever
 // switch on a flat string.
+//
+// The trailing bare `z.string()` is a deliberate catch-all: QuickNode's HyperCore product is
+// new and its `status` vocabulary has already grown three times since first integration
+// ("error", "waitingForTrigger", "stopped"). A value we haven't seen yet must NOT fail the
+// whole event parse — that silently drops a real TWAP transition. Instead it rides through
+// verbatim and twap-watcher/index.ts logs it loudly and still publishes it as a terminal
+// update when something actually executed. `z.union` is ordered, so known values still hit
+// their specific branch first.
 const quicknodeTwapStatusSchema = z.union([
   z.enum(["activated", "finished", "terminated", "waitingForTrigger"]),
   z.literal("stopped").transform(() => "terminated" as const),
   z.object({ error: z.string() }).transform(() => "error" as const),
+  z.string(),
+]);
+
+// Statuses index.ts has an explicit rule for. Anything outside this set is an unrecognized
+// QuickNode variant — logged, and published as a terminal update if it carries execution.
+export const RECOGNIZED_TWAP_STATUSES = new Set([
+  "activated",
+  "finished",
+  "terminated",
+  "waitingForTrigger",
+  "error",
 ]);
 
 export const quicknodeTwapEventSchema = z.object({
