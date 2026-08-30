@@ -57,6 +57,10 @@ export function FeedPage() {
   const [minTwapAmount, setMinTwapAmount] = useState<string | null>(null);
   const [notifyTwaps, setNotifyTwaps] = useState(true);
   const [isUpdatingTwapThreshold, setIsUpdatingTwapThreshold] = useState(false);
+  // ISO timestamp of the last TWAP threshold change. Changing the threshold is treated as
+  // "start fresh" — the TWAP table then shows only orders that arrive after this moment, not
+  // the whole backfilled history that happens to match the new threshold.
+  const [twapThresholdChangedAt, setTwapThresholdChangedAt] = useState<string | null>(null);
   const [minDepositAmount, setMinDepositAmount] = useState<string | null>(null);
   const [notifyDeposits, setNotifyDeposits] = useState(true);
   const [isUpdatingDepositThreshold, setIsUpdatingDepositThreshold] = useState(false);
@@ -288,6 +292,7 @@ export function FeedPage() {
       const settings = await updateTwapThreshold({ amount: preset, enabled: true });
       setMinTwapAmount(settings.minTwapAmount);
       setNotifyTwaps(settings.notifyTwaps);
+      setTwapThresholdChangedAt(new Date().toISOString());
       setReconnectKey((key) => key + 1);
     } catch (err) {
       console.error("failed to update twap threshold", err);
@@ -420,7 +425,12 @@ export function FeedPage() {
     .filter(atLeast(tradeFloor));
   const filteredTwapEvents = twapEvents
     .filter((event) => !isCoinExcludedByUser(event.coin))
-    .filter(atLeast(twapFloor));
+    .filter(atLeast(twapFloor))
+    // After a threshold change, only show orders that landed since — not the backfilled
+    // history for the new threshold (occurredAt is ISO, so string compare == time compare).
+    .filter(
+      (event) => twapThresholdChangedAt === null || event.occurredAt > twapThresholdChangedAt,
+    );
   const filteredDepositEvents = depositEvents.filter(atLeast(depositFloor));
 
   return (
