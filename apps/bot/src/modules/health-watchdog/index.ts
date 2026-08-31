@@ -8,9 +8,13 @@ const CHECK_INTERVAL_MS = 60_000;
 // A still-firing alarm re-pings the admin at most this often — a multi-hour outage should
 // nag, not go quiet after one message, but also not spam every minute.
 const RENOTIFY_MS = 60 * 60_000;
-// Worker heartbeats can legitimately be unreachable for the first minute after a deploy
-// (compose only waits on postgres, not on sibling workers) — don't alert during that window.
-const HEARTBEAT_GRACE_MS = 2 * 60_000;
+// Worker heartbeats are unreachable for a minute or two around every `scripts/deploy.sh`
+// (containers recreate, the bot itself restarts) — don't alert during this window after boot.
+const HEARTBEAT_GRACE_MS = 3 * 60_000;
+// ...and beyond the grace window, require this many consecutive failing checks (≈ minutes,
+// one check per CHECK_INTERVAL_MS) before firing — a deploy's brief unreachability recovers
+// well inside this, a real outage does not. Recovery clears it on the first healthy check.
+const HEARTBEAT_FAILURES_TO_ALERT = 3;
 
 // service name (docker-compose.prod.yml) -> heartbeat port. Reachable from the bot container
 // over the shared `internal` network. Only checked in production: dev workers run on
@@ -27,6 +31,7 @@ const WORKER_HEARTBEATS: Record<string, number> = {
 
 interface AlarmState {
   firing: boolean;
+  consecutiveDown: number;
   lastNotifiedAt: number;
 }
 
@@ -38,7 +43,8 @@ interface AlarmState {
  *    all end in "nothing gets published"), and
  *  - any apps/worker process reporting an unhealthy `/healthz` (faster, names the worker).
  *
- * Sends one Telegram message to `ADMIN_TELEGRAM_ID` on each healthy→unhealthy transition and
+ * Sends one Telegram message to `ADMIN_TELEGRAM_ID` when a signal goes bad (heartbeats only
+ * after HEARTBEAT_FAILURES_TO_ALERT consecutive fails, so a deploy's blip stays quiet) and
  * one on recovery; re-nags hourly while still down. Idle (logs and returns) if
  * `ADMIN_TELEGRAM_ID` is unset, same opt-in shape as the workers' USE_REAL_* flags.
  */
@@ -66,24 +72,31 @@ export function startHealthWatchdog(bot: Bot, db: Database, logger: Logger): voi
     down: boolean,
     downMsg: string,
     upMsg: string,
+    minConsecutive = 1,
   ): Promise<void> {
-    const prev = alarms.get(key) ?? { firing: false, lastNotifiedAt: 0 };
+    const prev = alarms.get(key) ?? { firing: false, consecutiveDown: 0, lastNotifiedAt: 0 };
     const now = Date.now();
 
     if (down) {
-      const isNew = !prev.firing;
+      const consecutiveDown = prev.consecutiveDown + 1;
+      const readyToFire = consecutiveDown >= minConsecutive;
+      const isNew = readyToFire && !prev.firing;
       const renotify = prev.firing && now - prev.lastNotifiedAt >= RENOTIFY_MS;
       alarms.set(key, {
-        firing: true,
+        firing: prev.firing || readyToFire,
+        consecutiveDown,
         lastNotifiedAt: isNew || renotify ? now : prev.lastNotifiedAt,
       });
       if (isNew || renotify) await send(`🔴 ${downMsg}`);
       return;
     }
 
+    // Healthy: reset the streak; announce recovery only if we'd actually alerted.
     if (prev.firing) {
-      alarms.set(key, { firing: false, lastNotifiedAt: now });
+      alarms.set(key, { firing: false, consecutiveDown: 0, lastNotifiedAt: now });
       await send(`🟢 ${upMsg}`);
+    } else if (prev.consecutiveDown > 0) {
+      alarms.set(key, { ...prev, firing: false, consecutiveDown: 0 });
     }
   }
 
@@ -136,6 +149,7 @@ export function startHealthWatchdog(bot: Bot, db: Database, logger: Logger): voi
         !ok,
         `Worker "${service}" is unhealthy (${detail}).`,
         `Worker "${service}" is healthy again.`,
+        HEARTBEAT_FAILURES_TO_ALERT,
       );
     }
   }
