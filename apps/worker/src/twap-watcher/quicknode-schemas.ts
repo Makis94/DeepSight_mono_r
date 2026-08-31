@@ -80,6 +80,11 @@ export const RECOGNIZED_TWAP_STATUSES = new Set([
 
 export const quicknodeTwapEventSchema = z.object({
   twap_id: z.number(),
+  // Timestamp of THIS status transition (ISO 8601), distinct from `state.timestamp` which is
+  // the order's creation time — a "finished" event still carries the creation `state.timestamp`,
+  // so this is the only field that says when the order actually finished. Optional as a hedge
+  // against the field being renamed/dropped (see doc comment); callers fall back to "now".
+  time: z.string().optional(),
   status: quicknodeTwapStatusSchema,
   state: quicknodeTwapStateSchema,
 });
