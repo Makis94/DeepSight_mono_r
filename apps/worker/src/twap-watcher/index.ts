@@ -148,7 +148,11 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
       status: toPayloadStatus(status),
     };
 
-    const occurredAt = order.timestamp ? new Date(order.timestamp) : new Date();
+    // `event.time` is when THIS transition happened; `order.timestamp` is the order's
+    // creation time and is identical on the "activated" and "finished" events of one order —
+    // using it would sort a completion next to its open and hide it behind any downstream
+    // "only since T" filter. Fall back to now (QuickNode is realtime, so ~the transition).
+    const occurredAt = event.time ? new Date(event.time) : new Date();
     const newEvent: Omit<NewEvent, "id" | "createdAt"> = {
       type: "market_twap",
       walletAddress: null,
