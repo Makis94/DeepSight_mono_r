@@ -23,6 +23,11 @@ const REFRESH_INTERVAL_MS = 10 * 60_000;
  *
  * Spot names come from Hyperliquid's `spotMeta` (info weight 20), refreshed every
  * REFRESH_INTERVAL_MS into memory — never looked up per event.
+ *
+ * Names are the L1 token names, so a UI-remapped pair renders in its HyperCore form
+ * ("UBTC/USDC", not app.hyperliquid.xyz's "BTC/USDC"). Left as-is deliberately: that's the
+ * canonical on-chain name, and a wrong remap would be worse than an unfamiliar-but-correct
+ * one. (Info-endpoint docs note this remapping.)
  */
 export class SpotNameCache {
   private readonly baseUrl: string;
