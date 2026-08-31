@@ -164,7 +164,15 @@ export const marketTwapPayloadSchema = z.object({
   // Hyperliquid's own TWAP order id — stable across this order's activated/finished/
   // terminated transitions, so a client can group the 2-3 events of one real order together.
   twapId: z.number(),
+  // Raw Hyperliquid asset id, kept verbatim for the slice-fills drill-down: a plain ticker
+  // ("BTC"), a HIP-3 "{dex}:{coin}" perp, or a spot id ("@107" / "PURR/USDC").
   coin: z.string(),
+  // Whether `coin` is a perp or a spot market. Optional: rows written before spot TWAPs were
+  // included have no value — treat a missing `market` as "perp" on read.
+  market: z.enum(["perp", "spot"]).optional(),
+  // Human-readable name for the UI/bot ("BTC", "xyz:NVDA", "HYPE/USDC"). Optional for the
+  // same back-compat reason — fall back to `coin` when absent.
+  displayCoin: z.string().optional(),
   side: tradeSide,
   address: walletAddressSchema,
   // Target order size, in base-asset units (e.g. ETH) — not USD. Same shape as wallet_twap's

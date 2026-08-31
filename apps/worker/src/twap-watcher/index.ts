@@ -7,6 +7,7 @@ import { publishEvent } from "../shared/publish-event.js";
 import { MidPriceCache } from "./mid-price-cache.js";
 import { QuicknodeTwapSource } from "./sources/quicknode-twap-source.js";
 import { RECOGNIZED_TWAP_STATUSES, type QuicknodeTwapEvent } from "./quicknode-schemas.js";
+import { SpotNameCache } from "./spot-name-cache.js";
 
 const WORKER_ID = "twap-watcher";
 
@@ -16,16 +17,6 @@ const WORKER_ID = "twap-watcher";
 // quicknode-schemas.ts doc comment).
 function sideFromHyperliquid(side: string): "buy" | "sell" {
   return side === "B" ? "buy" : "sell";
-}
-
-// Same spot-exclusion convention as every other watcher's isPerpFill/isPerpTrade (wallet-
-// watcher, market-watcher, common-wallet-tracker classify.ts) — Hyperliquid identifies a
-// spot asset by a numeric index ("@107") or a "BASE/QUOTE" pair rather than a ticker, and
-// this project has consistently chosen not to solve that name-resolution problem anywhere
-// else, so TWAPs on spot assets are excluded here too rather than showing a raw "@107".
-// HIP-3 dex-scoped perps ("xyz:MSTR") are unaffected — they contain ":" not "/".
-function isPerpCoin(coin: string): boolean {
-  return !coin.startsWith("@") && !coin.includes("/");
 }
 
 // packages/shared marketTwapPayloadSchema only persists these three. "activated" opens a row
@@ -62,6 +53,11 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
   const midPrices = new MidPriceCache(network, log.child({ source: "allMids-rest" }));
   midPrices.start();
 
+  // Classifies each TWAP's coin as perp/spot and resolves spot ids ("@107") to a readable
+  // pair ("HYPE/USDC") off Hyperliquid's spotMeta. Spot TWAPs used to be dropped outright.
+  const spotNames = new SpotNameCache(network, log.child({ source: "spotMeta" }));
+  spotNames.start();
+
   async function handleTwapEvent(event: QuicknodeTwapEvent): Promise<void> {
     state.lastEventAt = Date.now();
     const { twap_id: twapId, status, state: order } = event;
@@ -91,10 +87,18 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
       );
     }
 
-    if (!isPerpCoin(order.coin)) return;
+    const resolved = spotNames.resolve(order.coin);
+    if (!resolved) {
+      log.debug(
+        { twapId, coin: order.coin },
+        "twap on an unhandled market (outcome asset) — skipping",
+      );
+      return;
+    }
 
     // Builder-deployed perp ("{dex}:{coin}") — start polling that dex's mids so the next
     // transition (and ideally this one) can be priced. Its prices are never in the main dex.
+    // Spot ("@107" / "PURR/USDC") mids ride the main-dex allMids response already.
     const colon = order.coin.indexOf(":");
     if (colon !== -1) midPrices.ensureDex(order.coin.slice(0, colon));
 
@@ -130,6 +134,8 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
       type: "market_twap",
       twapId,
       coin: order.coin,
+      market: resolved.market,
+      displayCoin: resolved.displayCoin,
       side,
       address: order.user.toLowerCase(),
       size: order.sz,

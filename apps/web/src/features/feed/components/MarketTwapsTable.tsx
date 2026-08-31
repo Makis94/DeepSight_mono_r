@@ -143,7 +143,12 @@ export function MarketTwapsTable({
                       )}
                     >
                       <td>{STATUS_LABEL[payload.status] ?? payload.status}</td>
-                      <td>{payload.coin}</td>
+                      <td>
+                        {payload.displayCoin ?? payload.coin}
+                        <span className={`ht-market-tag ht-market-tag-${payload.market ?? "perp"}`}>
+                          {payload.market === "spot" ? "SPOT" : "PERP"}
+                        </span>
+                      </td>
                       <td className={payload.side === "buy" ? "ht-long" : "ht-short"}>
                         {payload.side}
                       </td>

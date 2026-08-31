@@ -67,11 +67,15 @@ function shortAddress(address: string): string {
 function formatTwapMessage(payload: MarketTwapPayload, amountUsd: string): string {
   const amount = Math.round(Number(amountUsd)).toLocaleString("en-US");
   const sideLabel = payload.side === "buy" ? "🟢 Buy" : "🔴 Sell";
+  // `market`/`displayCoin` are optional on rows written before spot TWAPs were included —
+  // fall back to "perp" and the raw coin id.
+  const marketLabel = payload.market === "spot" ? "Spot" : "Perp";
+  const coin = `${marketLabel} ${payload.displayCoin ?? payload.coin}`;
 
   if (payload.status === "activated") {
     return [
       `🆕 TWAP opened`,
-      `${sideLabel} $${amount} (est.) ${payload.coin}, target size ${payload.size}, over ${payload.minutes}min`,
+      `${sideLabel} $${amount} (est.) ${coin}, target size ${payload.size}, over ${payload.minutes}min`,
       `Address: \`${shortAddress(payload.address)}\``,
     ].join("\n");
   }
@@ -79,7 +83,7 @@ function formatTwapMessage(payload: MarketTwapPayload, amountUsd: string): strin
   const verb = payload.status === "finished" ? "finished" : "terminated early";
   return [
     `✅ TWAP ${verb}`,
-    `${sideLabel} $${amount} executed of ${payload.coin}, ${payload.executedSize}/${payload.size}`,
+    `${sideLabel} $${amount} executed of ${coin}, ${payload.executedSize}/${payload.size}`,
     `Address: \`${shortAddress(payload.address)}\``,
   ].join("\n");
 }
