@@ -150,6 +150,56 @@ export async function getAllMids(baseUrl: string, dex?: string): Promise<AllMids
   return allMidsResponseSchema.parse(json);
 }
 
+// source: hyperliquid-docs MCP
+// (https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/spot,
+// "Retrieve spot metadata"), verified: 2026-08-31. Only the fields we need are modelled;
+// `.passthrough()` keeps the rest (weiDecimals, tokenId, evmContract, …) from failing parse
+// as Hyperliquid adds token attributes over time.
+const spotTokenSchema = z
+  .object({ name: z.string(), index: z.number(), szDecimals: z.number() })
+  .passthrough();
+const spotPairSchema = z
+  .object({
+    name: z.string(),
+    // [baseTokenIndex, quoteTokenIndex] into `tokens`.
+    tokens: z.tuple([z.number(), z.number()]),
+    index: z.number(),
+  })
+  .passthrough();
+const spotMetaResponseSchema = z.object({
+  tokens: z.array(spotTokenSchema),
+  universe: z.array(spotPairSchema),
+});
+export type SpotMetaResponse = z.infer<typeof spotMetaResponseSchema>;
+
+/**
+ * POST {baseUrl}/info { "type": "spotMeta" } — the spot universe: every spot pair
+ * (`universe[]`, each with `tokens: [baseIdx, quoteIdx]` into `tokens[]`) and every spot
+ * token (`tokens[]`, name + index). Used to turn a spot TWAP's `coin` ("@107") into a
+ * readable pair ("HYPE/USDC"). `universe[].name` is already readable for canonical pairs
+ * (e.g. "PURR/USDC") and just "@{index}" otherwise.
+ *
+ * Info request weight 20 (source: hyperliquid-docs MCP, rate-limits-and-user-limits page —
+ * "All other documented info requests have weight 20", verified: 2026-08-31) — refresh on a
+ * multi-minute interval, never per-event.
+ */
+export async function getSpotMeta(baseUrl: string): Promise<SpotMetaResponse> {
+  const response = await fetch(`${baseUrl}/info`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "spotMeta" }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Hyperliquid spotMeta request failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const json: unknown = await response.json();
+  return spotMetaResponseSchema.parse(json);
+}
+
 export interface PositionLeverageAndMargin {
   leverageType: "cross" | "isolated";
   leverageValue: number;

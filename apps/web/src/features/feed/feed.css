@@ -670,6 +670,25 @@
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* Perp/spot marker next to a market_twap row's asset name. Muted by default; spot gets the
+   accent so the (rarer, newly-added) spot rows stand out at a glance. */
+.ht-market-tag {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  color: var(--text-muted);
+}
+
+.ht-market-tag-spot {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Second identifying cue alongside color (see wallet-emoji.ts) — not itself colored, so it
    stays legible even when the row's assigned color repeats another wallet's. A fixed rem
    size (not em) so it reads as clearly "bigger" in table cells too, where the surrounding
