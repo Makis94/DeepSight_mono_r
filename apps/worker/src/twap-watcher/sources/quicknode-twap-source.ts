@@ -15,6 +15,8 @@ export interface QuicknodeTwapSourceOptions {
   onClose?: () => void;
   minReconnectDelayMs?: number;
   maxReconnectDelayMs?: number;
+  pingIntervalMs?: number;
+  stallTimeoutMs?: number;
 }
 
 // The `id` we send on the initial hl_subscribe request — QuickNode's docs show `"id": 1` in
@@ -22,6 +24,21 @@ export interface QuicknodeTwapSourceOptions {
 // (logged at debug, not warned about as an unrecognized frame). See quicknode-schemas.ts's
 // doc comment for why the exact ack shape isn't otherwise confirmed.
 const SUBSCRIBE_REQUEST_ID = 1;
+
+// Keepalive. QuickNode's HyperCore stream normally delivers a frame (mostly empty blocks)
+// roughly once a second, so any real gap is short. On 2026-09-03 the feed stopped delivering
+// frames for ~2h WITHOUT sending a TCP close — `ws` never emitted "close", so the reconnect
+// path below never ran and the worker sat on a dead socket. These two timers turn that silent
+// death into an ordinary reconnect:
+//  - PING_INTERVAL_MS: send a WS-level ping frame so an idle intermediary can't quietly drop
+//    the flow and so a stalled server is prodded into either answering or being detected.
+//  - STALL_TIMEOUT_MS: if nothing at all arrives (no message, no pong) for this long, treat
+//    the socket as dead and `terminate()` it — that DOES emit "close", which triggers
+//    scheduleReconnect(). Must be comfortably above PING_INTERVAL_MS and the empty-block
+//    cadence so a brief hiccup doesn't cause a needless bounce.
+const PING_INTERVAL_MS = 15_000;
+const STALL_TIMEOUT_MS = 45_000;
+const LIVENESS_CHECK_INTERVAL_MS = 5_000;
 
 /**
  * Thin WS transport for QuickNode's HyperCore "TWAP" data stream — same reconnect discipline
@@ -34,6 +51,9 @@ const SUBSCRIBE_REQUEST_ID = 1;
 export class QuicknodeTwapSource {
   private ws: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private pingTimer: NodeJS.Timeout | null = null;
+  private livenessTimer: NodeJS.Timeout | null = null;
+  private lastActivityAt = 0;
   private reconnectAttempt = 0;
   private closedByUser = false;
 
@@ -47,11 +67,13 @@ export class QuicknodeTwapSource {
   close(): void {
     this.closedByUser = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.stopKeepalive();
     this.ws?.close();
   }
 
   private openSocket(): void {
-    const ws = new WebSocket(this.options.url);
+    this.stopKeepalive();
+    const ws = new WebSocket(this.options.url, { handshakeTimeout: 10_000 });
     this.ws = ws;
 
     ws.on("open", () => {
@@ -65,14 +87,23 @@ export class QuicknodeTwapSource {
           id: SUBSCRIBE_REQUEST_ID,
         }),
       );
+      this.startKeepalive(ws);
       this.options.onOpen?.();
     });
 
     ws.on("message", (raw: RawData) => {
+      this.lastActivityAt = Date.now();
       this.handleMessage(raw);
     });
 
+    // WS-level pong (reply to our ws.ping()) — proves the pipe is alive end-to-end even during
+    // a genuine lull in block frames.
+    ws.on("pong", () => {
+      this.lastActivityAt = Date.now();
+    });
+
     ws.on("close", () => {
+      this.stopKeepalive();
       this.options.onClose?.();
       if (!this.closedByUser) this.scheduleReconnect();
     });
@@ -125,6 +156,38 @@ export class QuicknodeTwapSource {
         { parsed },
         "quicknode twap ws message matched no known envelope shape",
       );
+    }
+  }
+
+  private startKeepalive(ws: WebSocket): void {
+    this.lastActivityAt = Date.now();
+    const pingMs = this.options.pingIntervalMs ?? PING_INTERVAL_MS;
+    const stallMs = this.options.stallTimeoutMs ?? STALL_TIMEOUT_MS;
+
+    this.pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.ping();
+    }, pingMs);
+
+    this.livenessTimer = setInterval(() => {
+      const idleMs = Date.now() - this.lastActivityAt;
+      if (idleMs <= stallMs) return;
+      this.options.logger.warn(
+        { idleMs },
+        "quicknode twap ws stalled — no frame or pong received, forcing reconnect",
+      );
+      this.stopKeepalive();
+      ws.terminate();
+    }, LIVENESS_CHECK_INTERVAL_MS);
+  }
+
+  private stopKeepalive(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    if (this.livenessTimer) {
+      clearInterval(this.livenessTimer);
+      this.livenessTimer = null;
     }
   }
 
