@@ -32,10 +32,19 @@ const SUBSCRIBE_REQUEST_ID = 1;
 // death into an ordinary reconnect:
 //  - PING_INTERVAL_MS: send a WS-level ping frame so an idle intermediary can't quietly drop
 //    the flow and so a stalled server is prodded into either answering or being detected.
-//  - STALL_TIMEOUT_MS: if nothing at all arrives (no message, no pong) for this long, treat
-//    the socket as dead and `terminate()` it — that DOES emit "close", which triggers
-//    scheduleReconnect(). Must be comfortably above PING_INTERVAL_MS and the empty-block
-//    cadence so a brief hiccup doesn't cause a needless bounce.
+//  - STALL_TIMEOUT_MS: if no actual data message arrives for this long, treat the socket as
+//    dead and `terminate()` it — that DOES emit "close", which triggers scheduleReconnect().
+//    Must be comfortably above PING_INTERVAL_MS and the empty-block cadence so a brief hiccup
+//    doesn't cause a needless bounce.
+//
+// Deliberately keyed on messages only, NOT pongs (see the 2026-09-04 incident this fixed:
+// `lastActivityAt` used to be refreshed by both). A pong only proves QuickNode's WS edge is
+// answering our pings — it says nothing about whether their backend is still publishing TWAP
+// blocks. That gap let the feed go silent for 30h straight while pongs kept `lastActivityAt`
+// fresh, so this stall timer never fired, `close` never fired, and the worker sat "connected"
+// but stale until a manual `docker compose restart`. `state.lastEventAt` (twap-watcher/index.ts,
+// driven by `onFrame`, message-only already) caught it correctly the whole time — this timer
+// just wasn't using the same signal.
 const PING_INTERVAL_MS = 15_000;
 const STALL_TIMEOUT_MS = 45_000;
 const LIVENESS_CHECK_INTERVAL_MS = 5_000;
@@ -53,7 +62,8 @@ export class QuicknodeTwapSource {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
   private livenessTimer: NodeJS.Timeout | null = null;
-  private lastActivityAt = 0;
+  // Drives the stall timer — messages only, see the STALL_TIMEOUT_MS comment above.
+  private lastMessageAt = 0;
   private reconnectAttempt = 0;
   private closedByUser = false;
 
@@ -92,14 +102,15 @@ export class QuicknodeTwapSource {
     });
 
     ws.on("message", (raw: RawData) => {
-      this.lastActivityAt = Date.now();
+      this.lastMessageAt = Date.now();
       this.handleMessage(raw);
     });
 
-    // WS-level pong (reply to our ws.ping()) — proves the pipe is alive end-to-end even during
-    // a genuine lull in block frames.
+    // WS-level pong (reply to our ws.ping()) — only proves the transport is up, not that
+    // QuickNode is still publishing TWAP blocks. Logged for diagnostics; deliberately does NOT
+    // feed the stall timer (see STALL_TIMEOUT_MS comment above for why that used to be a bug).
     ws.on("pong", () => {
-      this.lastActivityAt = Date.now();
+      this.options.logger.debug("quicknode twap ws pong");
     });
 
     ws.on("close", () => {
@@ -160,7 +171,7 @@ export class QuicknodeTwapSource {
   }
 
   private startKeepalive(ws: WebSocket): void {
-    this.lastActivityAt = Date.now();
+    this.lastMessageAt = Date.now();
     const pingMs = this.options.pingIntervalMs ?? PING_INTERVAL_MS;
     const stallMs = this.options.stallTimeoutMs ?? STALL_TIMEOUT_MS;
 
@@ -169,11 +180,11 @@ export class QuicknodeTwapSource {
     }, pingMs);
 
     this.livenessTimer = setInterval(() => {
-      const idleMs = Date.now() - this.lastActivityAt;
+      const idleMs = Date.now() - this.lastMessageAt;
       if (idleMs <= stallMs) return;
       this.options.logger.warn(
         { idleMs },
-        "quicknode twap ws stalled — no frame or pong received, forcing reconnect",
+        "quicknode twap ws stalled — no data message received, forcing reconnect",
       );
       this.stopKeepalive();
       ws.terminate();
