@@ -136,6 +136,17 @@ services:
       HEARTBEAT_PORT: "9107"
     command: ["node", "dist/twap-watcher/index.js"]
 
+  # DS-014 TWAP auto-trading (Phase A, paper only). Own process per CLAUDE.md's "each worker
+  # independent" rule — must not go down together with apps/api or any other worker. Idle
+  # (no-op, just logs a warning) unless USE_REAL_AUTO_TRADER=true is set in .env; safe to
+  # leave in the stack even before that flag is flipped on.
+  auto-trader:
+    <<: *worker-common
+    environment:
+      <<: *env-common
+      HEARTBEAT_PORT: "9108"
+    command: ["node", "dist/auto-trader/index.js"]
+
 networks:
   internal:
 

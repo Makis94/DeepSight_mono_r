@@ -27,6 +27,10 @@ const WORKER_HEARTBEATS: Record<string, number> = {
   "common-wallet-tracker": 9105,
   "subscription-watcher": 9106,
   "twap-watcher": 9107,
+  // DS-014, added alongside enabling USE_REAL_AUTO_TRADER=true in prod — before that flag is
+  // on, auto-trader's /healthz is permanently 503 by design (idle, not broken), which is
+  // exactly the false-alarm shape this map must not produce (see DS-010's history above).
+  "auto-trader": 9108,
 };
 
 interface AlarmState {
