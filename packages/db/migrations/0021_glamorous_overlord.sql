@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "auto_trades_open_account_coin_unique" ON "auto_trades" USING btree ("trading_account_id","coin") WHERE "auto_trades"."status" = 'open';

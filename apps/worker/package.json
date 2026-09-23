@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n wallet,market,deposit,coins,common,subscription,twap \"pnpm:dev:wallet-watcher\" \"pnpm:dev:market-watcher\" \"pnpm:dev:deposit-watcher\" \"pnpm:dev:coin-registry-sync\" \"pnpm:dev:common-wallet-tracker\" \"pnpm:dev:subscription-watcher\" \"pnpm:dev:twap-watcher\"",
+    "dev": "concurrently -n wallet,market,deposit,coins,common,subscription,twap,autotrader \"pnpm:dev:wallet-watcher\" \"pnpm:dev:market-watcher\" \"pnpm:dev:deposit-watcher\" \"pnpm:dev:coin-registry-sync\" \"pnpm:dev:common-wallet-tracker\" \"pnpm:dev:subscription-watcher\" \"pnpm:dev:twap-watcher\" \"pnpm:dev:auto-trader\"",
     "dev:wallet-watcher": "HEARTBEAT_PORT=9101 tsx watch src/wallet-watcher/index.ts",
     "dev:market-watcher": "HEARTBEAT_PORT=9102 tsx watch src/market-watcher/index.ts",
     "dev:deposit-watcher": "HEARTBEAT_PORT=9103 tsx watch src/deposit-watcher/index.ts",
@@ -12,6 +12,7 @@
     "dev:common-wallet-tracker": "HEARTBEAT_PORT=9105 tsx watch src/common-wallet-tracker/index.ts",
     "dev:subscription-watcher": "HEARTBEAT_PORT=9106 tsx watch src/subscription-watcher/index.ts",
     "dev:twap-watcher": "HEARTBEAT_PORT=9107 tsx watch src/twap-watcher/index.ts",
+    "dev:auto-trader": "HEARTBEAT_PORT=9108 tsx watch src/auto-trader/index.ts",
     "build": "tsup",
     "start:wallet-watcher": "node dist/wallet-watcher/index.js",
     "start:market-watcher": "node dist/market-watcher/index.js",
@@ -20,6 +21,7 @@
     "start:common-wallet-tracker": "node dist/common-wallet-tracker/index.js",
     "start:subscription-watcher": "node dist/subscription-watcher/index.js",
     "start:twap-watcher": "node dist/twap-watcher/index.js",
+    "start:auto-trader": "node dist/auto-trader/index.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -28,6 +30,7 @@
     "@hypertracker/db": "workspace:*",
     "@hypertracker/hyperliquid-sdk": "workspace:*",
     "@hypertracker/shared": "workspace:*",
+    "@hypertracker/trading-core": "workspace:*",
     "@noble/hashes": "^2.3.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.38.3",

@@ -9,6 +9,7 @@ export default defineConfig({
     "common-wallet-tracker/index": "src/common-wallet-tracker/index.ts",
     "subscription-watcher/index": "src/subscription-watcher/index.ts",
     "twap-watcher/index": "src/twap-watcher/index.ts",
+    "auto-trader/index": "src/auto-trader/index.ts",
   },
   format: ["esm"],
   target: "node22",

@@ -153,6 +153,17 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
     // using it would sort a completion next to its open and hide it behind any downstream
     // "only since T" filter. Fall back to now (QuickNode is realtime, so ~the transition).
     const occurredAt = event.time ? new Date(event.time) : new Date();
+    // Uses payload.status (the normalized 3-value status) ONLY for a status already in
+    // RECOGNIZED_TWAP_STATUSES — keeps the externalId format byte-for-byte identical to
+    // before quicknode-schemas.ts stopped collapsing "stopped" into "terminated" (2026-09-22,
+    // for apps/worker/src/auto-trader). For an UNRECOGNIZED status, this deliberately keeps
+    // the raw `status` string instead: code-review (2026-09-23) caught that using
+    // payload.status there too would collapse a future/unseen terminal status into the same
+    // "terminated" externalId a real terminated event for the same twapId would also use —
+    // publishEvent's onConflictDoNothing would then silently drop whichever one arrives
+    // second, losing a real transition. Not reachable with today's known status vocabulary,
+    // but keeping the raw string costs nothing and closes the gap.
+    const externalIdStatus = RECOGNIZED_TWAP_STATUSES.has(status) ? payload.status : status;
     const newEvent: Omit<NewEvent, "id" | "createdAt"> = {
       type: "market_twap",
       walletAddress: null,
@@ -161,7 +172,7 @@ if (!env.USE_REAL_QUICKNODE_TWAP || !env.QUICKNODE_HYPERCORE_WSS_URL) {
       amountUsd: notionalUsd.toString(),
       payload,
       occurredAt,
-      externalId: `market-twap:${twapId}:${status}`,
+      externalId: `market-twap:${twapId}:${externalIdStatus}`,
     };
 
     try {

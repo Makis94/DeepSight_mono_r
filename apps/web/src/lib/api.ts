@@ -17,6 +17,20 @@ import {
   type SubscriptionResponse,
 } from "@hypertracker/shared/schemas/subscription";
 import type { Session } from "@hypertracker/shared/auth/session";
+import {
+  autoTradesResponseSchema,
+  leaderboardResponseSchema,
+  riskLimitsResponseSchema,
+  startLinkResponseSchema,
+  tradingAccountResponseSchema,
+  type AutoTradeResponse,
+  type ConfirmLinkBody,
+  type LeaderboardEntry,
+  type RiskLimitsResponse,
+  type StartLinkResponse,
+  type TradingAccountResponse,
+  type UpdateRiskLimitsBody,
+} from "@hypertracker/shared/schemas/trading";
 import { getMiniAppToken } from "./mini-app-session.js";
 import type { RealtimeEvent } from "./realtime-client.js";
 import { notifySessionExpired } from "./session-events.js";
@@ -403,4 +417,104 @@ export async function updateDepositThreshold({
     throw new Error(body?.error ?? `failed to update deposit threshold: ${response.status}`);
   }
   return (await response.json()) as Settings;
+}
+
+// --- Trading (CLAUDE.md "Post-MVP: TWAP auto-trading", Phase A / paper only) ---
+// Idle server-side unless AUTO_TRADER_LINKING_ENABLED=true (apps/api env) — these calls
+// 404/fail harmlessly against a deployment that hasn't turned the feature on yet.
+
+export async function getTradingAccount(): Promise<TradingAccountResponse> {
+  const response = await authFetch(`${API_URL}/trading/account`);
+  if (!response.ok) {
+    throw new Error(`failed to load trading account: ${response.status}`);
+  }
+  return tradingAccountResponseSchema.parse(await response.json());
+}
+
+// Step 1 of linking: server generates an agent keypair and returns the EIP-712 payload for
+// the user's OWN connected wallet to sign (see lib/wallet.ts) — we never see their key.
+export async function startTradingLink(walletAddress: string): Promise<StartLinkResponse> {
+  const response = await authFetch(`${API_URL}/trading/link/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ walletAddress }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `failed to start wallet link: ${response.status}`);
+  }
+  return startLinkResponseSchema.parse(await response.json());
+}
+
+// Step 2: posts back the {r, s, v} the wallet produced — apps/api submits it to Hyperliquid.
+export async function confirmTradingLink(
+  signature: ConfirmLinkBody["signature"],
+): Promise<{ linked: boolean }> {
+  const response = await authFetch(`${API_URL}/trading/link/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signature } satisfies ConfirmLinkBody),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `failed to confirm wallet link: ${response.status}`);
+  }
+  return (await response.json()) as { linked: boolean };
+}
+
+// The single soft-pause checkbox (CLAUDE.md, 2026-09-22 decision) — checked = trading
+// active, unchecked = stop opening NEW trades (already-open ones keep running to their own
+// TP/SL regardless, enforced server-side).
+export async function updateTradingStatus(
+  tradingEnabled: boolean,
+): Promise<{ tradingEnabled: boolean }> {
+  const response = await authFetch(`${API_URL}/trading/account/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tradingEnabled }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `failed to update trading status: ${response.status}`);
+  }
+  return (await response.json()) as { tradingEnabled: boolean };
+}
+
+export async function getRiskLimits(): Promise<RiskLimitsResponse> {
+  const response = await authFetch(`${API_URL}/trading/risk-limits`);
+  if (!response.ok) {
+    throw new Error(`failed to load risk limits: ${response.status}`);
+  }
+  return riskLimitsResponseSchema.parse(await response.json());
+}
+
+export async function updateRiskLimits(body: UpdateRiskLimitsBody): Promise<void> {
+  const response = await authFetch(`${API_URL}/trading/risk-limits`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(err?.error ?? `failed to update risk limits: ${response.status}`);
+  }
+}
+
+// Top TWAP-initiating wallets by Trust Score (spec §3's "самых надежных по рейтингу"
+// leaderboard) — these are EXTERNAL wallets apps/worker's auto-trader watches/scores, not
+// our own users.
+export async function getTradingLeaderboard(): Promise<LeaderboardEntry[]> {
+  const response = await authFetch(`${API_URL}/trading/leaderboard`);
+  if (!response.ok) {
+    throw new Error(`failed to load leaderboard: ${response.status}`);
+  }
+  return leaderboardResponseSchema.parse(await response.json()).entries;
+}
+
+export async function getTradingTrades(): Promise<AutoTradeResponse[]> {
+  const response = await authFetch(`${API_URL}/trading/trades`);
+  if (!response.ok) {
+    throw new Error(`failed to load trades: ${response.status}`);
+  }
+  return autoTradesResponseSchema.parse(await response.json()).trades;
 }

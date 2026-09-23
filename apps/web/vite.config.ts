@@ -24,6 +24,7 @@ export default defineConfig({
       "/prices": "http://localhost:3001",
       "/events": "http://localhost:3001",
       "/subscription": "http://localhost:3001",
+      "/trading": "http://localhost:3001",
       "/realtime": { target: "http://localhost:3001", ws: true },
     },
   },

@@ -23,10 +23,15 @@ import { z } from "zod";
 //    non-null `state.trigger`/`state.stopPx` (both null on a normal TWAP) — sz/executedSz/
 //    executedNtl are all still 0 at this point, nothing has opened yet.
 //  - a stop-triggered order that ended early: `status: "stopped"`, with real (non-zero)
-//    executedSz/executedNtl from however much ran before the stop hit. Unlike the two above,
-//    something DID happen here — normalized to "terminated" (packages/shared
-//    marketTwapPayloadSchema has no separate "stopped" state) since both mean "ended before
-//    running its full course," and twap-watcher/index.ts publishes it normally.
+//    executedSz/executedNtl from however much ran before the stop hit. Something DID happen
+//    here, same as "terminated". Kept as its own literal (not collapsed here) since
+//    apps/worker/src/auto-trader needs to tell "stopped by its own configured price
+//    boundary" apart from "terminated" (cancelled/otherwise ended) for Trust Score purposes
+//    (packages/trading-core trust-score.ts: a price-boundary stop must NOT be scored as a
+//    cancellation) — added 2026-09-22. twap-watcher/index.ts's own toPayloadStatus() still
+//    collapses "stopped" into "terminated" for its payload (packages/shared
+//    marketTwapPayloadSchema has no separate "stopped" state), so this change is a no-op for
+//    twap-watcher's actual published output.
 // "error"/"waitingForTrigger" are the only two treated as their own status with nothing to
 // notify on yet — twap-watcher/index.ts skips those (no notional check, no publish).
 //
@@ -62,8 +67,7 @@ export type QuicknodeTwapState = z.infer<typeof quicknodeTwapStateSchema>;
 // update when something actually executed. `z.union` is ordered, so known values still hit
 // their specific branch first.
 const quicknodeTwapStatusSchema = z.union([
-  z.enum(["activated", "finished", "terminated", "waitingForTrigger"]),
-  z.literal("stopped").transform(() => "terminated" as const),
+  z.enum(["activated", "finished", "terminated", "waitingForTrigger", "stopped"]),
   z.object({ error: z.string() }).transform(() => "error" as const),
   z.string(),
 ]);
@@ -75,6 +79,7 @@ export const RECOGNIZED_TWAP_STATUSES = new Set([
   "finished",
   "terminated",
   "waitingForTrigger",
+  "stopped",
   "error",
 ]);
 

@@ -14,6 +14,7 @@ import { RealtimeHub } from "./modules/realtime/hub.js";
 import { realtimeRoutes } from "./modules/realtime/routes.js";
 import { settingsRoutes } from "./modules/settings/routes.js";
 import { subscriptionRoutes } from "./modules/subscription/routes.js";
+import { tradingRoutes } from "./modules/trading/routes.js";
 import { watchedWalletsRoutes } from "./modules/watched-wallets/routes.js";
 
 export async function buildServer() {
@@ -80,6 +81,9 @@ export async function buildServer() {
   });
   await app.register((instance) => {
     subscriptionRoutes(instance, db);
+  });
+  await app.register((instance) => {
+    tradingRoutes(instance, db);
   });
   await app.register((instance) => {
     realtimeRoutes(instance, hub, db);

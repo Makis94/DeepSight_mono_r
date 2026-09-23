@@ -133,6 +133,337 @@ Decision (superseded, re-evaluate — see note below): the only real way to give
 
 **This is explicitly scoped for after MVP ships**, not now — do not start building a node-backed data source as part of current MVP work without this being raised and confirmed first. When it is picked up, treat it the same way `deposit-monitoring-architecture`'s `DepositSource` was scoped: a plan shown first (new `apps/worker` ingestion service, schema changes, ops for running/monitoring the node) per the "show the plan first" rule below, before any code.
 
+## Post-MVP: TWAP auto-trading (in-app trade opening) — spec received 2026-09-20, branch `feature/DS-014-in-app-trade-opening`
+
+**Status (updated 2026-09-23): Phase A (paper trading) substantially built, piece by piece, each package confirmed with the customer before the next started** — see the Progress log below for exactly what's ✅ vs ⬜. This is a new product surface (the app will eventually place real orders with real user funds) — every formula below is still an **open calibration question** (needs backtest / customer input), not a settled decision, and Phase B (real order signing/placement) has not been started and needs its own plan+confirmation when picked up.
+
+### Spec (customer text, translated)
+
+Software watches large Hyperliquid TWAP orders and automatically opens positions off them, using a price-impact estimate for SL/TP, the initiating wallet's reputation, and aggregate parallel-TWAP pressure.
+
+1. **Triggers — two tiers by asset capitalization/liquidity.** Tier A (large: ZEC, HYPE and similar): base value for ZEC ≥ $500,000 over 5 min; thresholds for other Tier A assets are *derived* from the base, adjusted for that coin's capitalization and order-book depth (not one fixed number). Tier B (less liquid: ARB, UNI and similar): base ≥ $300,000 over 5 min, same derivation. Dev task: a threshold-normalization formula inside a tier (e.g. by average daily volume or market cap relative to the tier's base coin).
+2. **Trust Score per wallet** (e.g. −100…+100, decaying over time) → multiplier on future position size for that wallet's signals. Fully executed TWAP: + (may raise size). Cancelled before first execution: − (large penalty). Cancelled mid-execution: − (smaller penalty). 2+ cancellations (cumulative): extra reduction, enter with deliberately smaller size on all future signals from that wallet. Dev task: score scale, time-decay formula, score→size-multiplier formula.
+3. **Price-impact estimate** on each new TWAP signal: take current order-book depth for the asset, estimate the % price move over the TWAP's execution from order size vs. liquidity across book levels, derive the "maximum potential" move range.
+4. **Main trade SL/TP.** Stop-Loss from the computed price impact. Take-Profit NOT at the full computed potential but at a reasonable fraction (starting hypothesis TP = 60–70% of the computed max move — must be justified and backtested).
+5. **Position size** = base size × Trust-Score multiplier of the signalling wallet.
+6. **Reverse trade after the main position closes — DESCOPED (customer decision 2026-09-22).** Original spec text, kept for record: sell-TWAP on ZEC $800k / 5 min → open short → TP fires normally. If TP fired at ≈95% TWAP execution (configurable), open the opposite position (long). Reverse trade: new potential computed by the price-impact logic but applied to the remaining "tail" of the TWAP (last ~5% of volume) plus a possible short-term bounce after seller/buyer pressure ends; its TP is smaller than the main TP (shorter, smaller retracement target); its SL is recomputed to the reduced scale. **Customer confirmed: we open the main trade in the TWAP's own direction only. We do NOT open the reversal position at ~95% execution.** Do not build item 6 — no reversal-trigger detection, no reverse-trade sizing/TP/SL logic, no `TRADES`-stream execution-progress tracking whose only purpose was the reversal trigger.
+7. **Parallel / accumulated TWAPs.** While a trigger TWAP runs, other TWAPs (short and long) on the same asset add aggregate pressure and must not be ignored. Continuously track ALL active TWAPs per asset (not only those passing the trigger threshold); aggregate buy and sell volume separately over a sliding window (e.g. last 10 min — parameter); expose "net flow" (buy-TWAP sum − sell-TWAP sum) as a background pressure indicator; on every new trigger signal check it. Example: trigger sell-TWAP $800k/5min arrives while ~10 longer (60 min) buy-TWAPs sit on the same asset and their in-window volume exceeds the trigger's → reduce size, skip the trade, or apply a reducing coefficient. Dev task: all-active-TWAP monitor with sliding-window aggregation (window and tracked types parameterized) and a formula f(counter_volume / trigger_volume) for the size/decision.
+
+Open questions (not resolved in the spec): threshold normalization formula (1); Trust Score scale + decay (2); TP coefficient vs. computed max move (4); counter-flow → size/decision formula (7). (Item 6's reversal-threshold/TP-SL-shrink question is moot — item 6 is descoped, see above.)
+
+### Feasibility check against docs (2026-09-20) — what the data/execution layers actually give us
+
+Sources: `hyperliquid-docs` MCP (Hyperliquid's own API) + `quicknode.com/docs/hyperliquid` (QuickNode's own product, not covered by the MCP). Numbers here are verified as of that date; re-verify before hardcoding any (per the rules above, every hardcoded limit needs a `// source: ..., verified: YYYY-MM-DD` comment).
+
+**Signal side — feasible, QuickNode is mandatory for it.**
+
+- Hyperliquid's own TWAP feeds (`twapStates`, `userTwapHistory`, `userTwapSliceFills`) are **user-specific** subscriptions → capped at 10 unique users per IP; useless for market-wide monitoring. Global TWAP feed = QuickNode `TWAP` dataset (already used by `apps/worker/src/twap-watcher`). Requires QuickNode Build plan+ (Free Trial has no streaming access).
+- TWAP dataset emits **one event per state change** (no periodic progress): statuses `waitingForTrigger | activated | finished | stopped | terminated | {error}`; `state` carries `coin,user,side,sz,executedSz,executedNtl,minutes,reduceOnly,randomize,timestamp,trigger,stopPx`. Filterable server-side by `user/coin/side/status` only — **no notional filter** (thresholding stays client-side, as today).
+- (Execution-progress tracking via `TRADES` stream `twapId:["*"]` for a "≈95%" reverse trigger is **not needed** — item 6/reversal is descoped, see above.) Still relevant generally: HL docs say a TWAP fires a suborder at most every 30s (5-min TWAP ≈ 10 slices), each suborder ≤3% slippage, catch-up suborders up to 3× normal size, `randomize` ±20% per suborder, min running time 5 min, max 7 days, min $100 notional.
+- **Trust Score classification limits:** `terminated` = "cancelled or otherwise terminated before its execution window ended" — user cancel vs. other termination is **not distinguishable** from the event alone; use `executedSz` (0 → cancelled before first execution; 0<executedSz<sz → mid-execution). `stopped` (price boundary) and `{error}` (e.g. insufficient margin) are separate statuses and must NOT be scored as cancellations. `finished` does not guarantee `executedSz == sz`. QuickNode stream is forward-only (no history/snapshot) → per-wallet history has to be accumulated by us or backfilled via `twapHistory` info (weight 20 + per-20-items on HL REST; 20 credits on QuickNode `/info`).
+- **All-active-TWAP monitor (item 7):** the stream already delivers every TWAP; current `twap-watcher` drops those under `TWAP_MIN_NOTIONAL_USD` (default $100k) before persisting — the aggregator needs the unfiltered stream. Active set is rebuilt from events; it is lost on restart/reconnect (no snapshot) → must be persisted.
+- `reduceOnly` TWAPs are position-closing flow, not fresh directional intent — the spec doesn't say how to treat them (decision needed).
+
+**Order-book / price impact — feasible, with a depth caveat.**
+
+- HL `l2Book` (REST/WS, not user-specific): **max 20 levels per side**, optional `nSigFigs` (2–5) aggregation for wider price range; REST weight 2. HL does not provide an impact model — `impactPxs` in `metaAndAssetCtxs` is only the average price for the _funding impact notional_ (20,000 USDC BTC/ETH, 6,000 USDC others), not for $500k+. Also available in `metaAndAssetCtxs`: `dayNtlVlm`, `openInterest`, `markPx` (usable for tier thresholds / normalization).
+- QuickNode `/info` does **not** serve `l2Book`; deeper book (up to 100 levels) is gRPC-only `StreamL2Book` (one coin per stream; Build plan = 5 concurrent streams, so per-coin streaming doesn't scale — prefer an on-demand HL REST `l2Book` snapshot at signal time). OrderBook gRPC methods bill 10 credits per 0.0165 MB (≈6× the rate of standard streams). How the book _replenishes_ during a 5-min TWAP is not in any doc — the impact model is a research/backtest problem, not an API lookup.
+
+**Execution side — feasible via Hyperliquid's native `/exchange`; several hard constraints.**
+
+- Actions available: `order` (limit `Alo|Ioc|Gtc`, trigger `tp|sl` with `isMarket`/`triggerPx`, `grouping: na|normalTpsl|positionTpsl`, optional `builder {b,f}`), `cancel/cancelByCloid`, `modify`, `updateLeverage`, `scheduleCancel` (dead-man's switch), `twapOrder/twapCancel`. Min order $10; actions expire if not accepted in 15s (`expiresAfter` available); market-order max value depends on asset max leverage ($30M … $500k).
+- TP/SL are triggered by **mark price** (not last trade); market TP/SL have **10% slippage tolerance** — use limit TP/SL to bound it; TP/SL orders must be reduce-only; bracket via `normalTpsl` grouping.
+- **Custody model = API (agent) wallet.** User signs `approveAgent` once with their own wallet; we hold only the agent key and sign orders with it. Constraints: 1 unnamed + up to 3 named agents per account; expiry ≤180 days (renewal needs a fresh user signature); nonces tracked per signer (100 highest, window T−2d…T+1d) — one agent per trading process, and **never reuse an agent address after deregistration** (nonce set is pruned → replay risk). Queries must use the master account address, not the agent's. Agent-signable actions include `agentSendAsset` (destination must equal source — no exfiltration path documented) and abstraction setters; `withdraw3` ("Initiate a withdrawal request") is a separate action and the pages read do **not** state which signer it accepts — **not verified that an agent signature is rejected for it; confirm on testnet before any key custody design is accepted.** Custodial keys (we hold user private keys) are out of the question.
+- **Rate limits that bite a multi-user platform:** REST 1200 weight/min per IP shared by everyone (exchange action = weight 1+⌊batch/40⌋, `l2Book/allMids/clearinghouseState/orderStatus` = 2, other info = 20); address limit = 1 request per 1 USDC traded cumulatively + 10,000 initial buffer, then 1 request/10s (cancels have a larger allowance); 1000 open orders base. **Watching each user's own fills/orders over HL WS is capped at 10 unique users per IP** — the TP-fill→reverse-trade loop for N users cannot rely on per-user WS; use polling of `orderStatus` by oid (weight 2), or QuickNode `TRADES` stream filtered by user (≤100 values per filter field, Build plan = 5 named filters/stream), or QuickNode `hl_batchOpenOrders`/`hl_batchClearinghouseStates` (5 credits per address).
+- **QuickNode Exchange API (`/hypercore/exchange`, build → sign → send, 0 credits) is not a neutral pipe:** "transactions are appended with a builder fee during the build step" (QuickNode's builder code; own code only via white-label deal). Do not route user orders through it. **Decision (customer, 2026-09-22): no commission/builder fee on user trading volume for now** — send orders to Hyperliquid's own `/exchange` with no builder code (skip `approveBuilderFee` entirely), not QuickNode's pipe. Revisit only if the customer later asks for a builder fee; don't add one speculatively. QuickNode's Exchange API stays useful only as a reference for the build/sign/send flow and `preflight` validation, never as the actual order path.
+- Wallet linkage: HL identity is a wallet address; `telegram_id` stays the only _app_ identity — the wallet is a linked attribute captured by the `approveAgent` signature (needs a wallet-connect/signing UX inside the Mini App and standalone site; unified-account mode users are limited to 50k actions/day, standard mode has no such cap).
+- HIP-3 assets (`xyz:NVDA`, etc.) appear in the TWAP stream, use asset id `100000 + dex_index*10000 + index` and different fee/oracle rules — start with core perps only.
+
+### Decision (customer, 2026-09-22): Hyperliquid-only for v1, multi-exchange-ready architecture from day one
+
+Build and ship against Hyperliquid only first — no second exchange's signal/execution code in the initial implementation. But the plan must not hardcode Hyperliquid assumptions into the core auto-trading logic (Trust Score, price-impact estimate, threshold tiers, position sizing, risk limits). Same pattern as `deposit-monitoring-architecture`'s `DepositSource` abstraction (see MVP section above): define exchange-agnostic interfaces up front —
+
+- a **signal source** interface (large-order/TWAP-equivalent events → normalized shape: asset, side, notional, wallet id, status), Hyperliquid/QuickNode as the first implementation
+- an **execution adapter** interface (place/cancel/modify order, TP/SL, position query, wallet/key linkage), Hyperliquid `/exchange` as the first implementation
+- exchange identity kept alongside `telegram_id`, not replacing it — a user's Hyperliquid wallet link is one linked account among possibly several exchanges later, mirroring how the WEEX referral work already treats an external exchange UID as a linked attribute, not a new identity system
+
+Do not build a second exchange now — only keep the seam so adding one later is a new adapter, not a rewrite. Flag explicitly in the plan which pieces are genuinely Hyperliquid-agnostic vs. which (asset-id scheme, tick/lot size, rate limits, nonce/agent-wallet model) are inherently exchange-specific and just live behind the adapter.
+
+### Constraints to carry into the plan (proposed — confirm before implementing)
+
+- Amounts/PnL/sizes: decimal strings or fixed-point only (existing rule); TWAP stream already delivers decimals as strings.
+- No trading keys and no signing in `apps/web`/`apps/bot`; agent keys encrypted at rest, with a global kill switch, per-user max position/loss limits, and a dry-run (paper) mode before any live order.
+
+  **Clarified 2026-09-23** (code-review flagged this as a possible violation, worth settling explicitly rather than leaving ambiguous): "used only by a dedicated worker process" means **signing trade actions with the agent key** — that DOES belong in `apps/worker` only (Phase B, not built), same place `PaperExecutionAdapter`/the future live `ExecutionAdapter` already live. It does NOT mean key _generation/storage_ — `apps/api/src/modules/trading/routes.ts` generates the agent keypair and writes it encrypted (AES-256-GCM, `crypto.ts`) during the linking flow, and that is intentional, not a gap: linking is inherently a synchronous HTTP request/response (serve a payload to sign, accept the signature back) and `apps/worker` has no HTTP surface to build that on without giving it one just for this. `apps/api` never decrypts or signs with the agent key — Phase A's only use of it is storage; both processes read/write the same Postgres `trading_accounts` row regardless of which one wrote it first, so there is no meaningful exposure difference between "generated in api" and "generated in worker" today. Revisit if Phase B's design turns out to want otherwise.
+
+- Everything Hyperliquid-facing goes through `hyperliquid-api-reviewer` + MCP verification; QuickNode facts need re-verification directly on their docs (MCP doesn't cover them).
+- No builder fee / commission on user trading volume for v1 (see decision above).
+- Signal and execution logic sit behind exchange-agnostic interfaces per the multi-exchange decision above, even though only Hyperliquid is implemented now.
+
+### Decision (customer, 2026-09-22): one unified `apps/web` page, not a separate leaderboard page
+
+`apps/web/src/features/trading/` is a **single page**, not split into a leaderboard route and a
+separate account-settings route. One page contains:
+
+- **Top TWAP performers table** — the trust-score leaderboard (`trust_scores`, external
+  wallets we watch/score, not our own users).
+- **The current user's own account section** — their linked Hyperliquid wallet status, the
+  `approveAgent` authorization/linking flow (the actual EIP-712 signature happens client-side
+  in the user's own wallet — see the multi-exchange execution-adapter notes above, we never
+  hold the user's real private key), and account-level info.
+- **A single checkbox/toggle** bound to `trading_accounts.tradingEnabled` — checked = trading
+  active, unchecked = **soft stop** (matches the 2026-09-22 soft-pause decision already in
+  `packages/db`: gates new entries only, any already-open `auto_trades` row keeps running to
+  its own TP/SL regardless).
+
+### Progress log (updates as pieces land — keep this current, don't let it silently drift from what's actually built)
+
+- ✅ **`packages/trading-core`** — pure calibratable logic (tier thresholds, trust score,
+  price impact, parallel flow, position sizing), 50 tests passing. No I/O.
+  **Manipulation-defense pass (2026-09-22):** a scenario-based review (real numbers, not
+  guesses — run via a throwaway script against the actual formulas) of `computeTrustScore`/
+  `scoreToSizeMultiplier` found two real exploitable gaps before this: (a) as few as 10
+  SAME-DAY `fully_executed` events maxed a wallet's score → 1.5x sizing, cheap to fake by
+  bursting small TWAPs; (b) the size-multiplier floor (0.5x) never distinguished a mildly bad
+  wallet from a severely/repeatedly bad one — nothing could ever be fully excluded. Fixed by
+  `evaluateWalletTrust()` (new): a `confidence` factor (needs real TENURE — calendar days
+  observed — AND event VOLUME before a wallet can earn a sizing BOOST above neutral)
+  dampens the UPSIDE only; a bad/negative score is punished at full strength immediately, no
+  grace period (asymmetric on purpose — a false positive risks real capital, a false
+  negative only costs missed upside). Plus a new `blocked` state (effectiveScore crosses
+  `blockThreshold`, default -90) that fully skips a wallet's signals — **this exact
+  behavior is NOT in the original spec** (spec §3 only ever says "smaller size", never "stop
+  following"), added as an explicit safety layer and flagged for customer sign-off; set
+  `blockThreshold` to `-Infinity` to disable it and match the spec's literal text. Verified
+  empirically: 10-same-day-execs case now stays at neutral 1.0x (was 1.5x); a genuine
+  30-execution/90-day history still reaches full 1.5x (confidence=1); the 5-cancels-in-10-
+  days case is now `blocked` (0x) instead of floored at 0.5x; a single isolated cancellation
+  still only costs 0.85x, not a block. `trust_scores` gained `confidence`/`effective_score`/
+  `blocked` columns (migration `0020_narrow_wolf_cub.sql`); `/trading/leaderboard` now ranks
+  by `effectiveScore`, not raw `score`, for the same reason. **Still not backtested against
+  real historical TWAP outcomes** — `maturityDays`/`minEventsForFullConfidence`/
+  `blockThreshold`/`decayHalfLifeDays` remain calibration placeholders, now at least
+  internally consistent and manipulation-resistant rather than just asserted correct. Revisit
+  once `trigger_evaluations`/`trust_score_events` have real production data to replay
+  against.
+- ✅ **`packages/db`** migration `0017_clean_preak.sql` — `trading_accounts`, `trust_scores`,
+  `trust_score_events`, `trigger_evaluations`, `auto_trades`, `risk_limits`,
+  `auto_trader_global_config`.
+- ✅ `packages/hyperliquid-sdk` — l2Book snapshot, metaAndAssetCtxs (dayNtlVlm), agent keypair
+  generation (`agent-wallet.ts`, cross-checked against an independent Node-crypto derivation
+  path, 12 tests), unsigned `approveAgent` EIP-712 payload builder (`signing.ts`, fields
+  copied from the official Python SDK's source, not memory), submit-pre-signed-action.
+  Reviewed by `hyperliquid-api-reviewer` (2026-09-22): one real bug found and fixed
+  (`impactPxs` needed `.nullable()`, not just `.optional()` — Hyperliquid returns literal
+  `null` for thin-liquidity/HIP-3 assets). **Real ORDER signing** (the agent wallet signing
+  trade actions, msgpack+keccak+EIP-712 "Agent" struct) is Phase B only — Phase A's
+  `PaperExecutionAdapter` never calls it, so it is deliberately NOT built yet.
+  **OPEN VERIFICATION ITEM, blocks going live with the linking flow (not blocking further
+  Phase A code):** `signing.ts`'s `USER_SIGNED_ACTION_SIGNATURE_CHAIN_ID = "0x66eee"` came
+  from the Python SDK's source, not the MCP docs — the MCP's own worked EIP-712 examples use
+  `"0xa4b1"` instead, and hyperliquid-api-reviewer confirmed the MCP does not corroborate
+  `0x66eee` either way. Must be confirmed with a real testnet `approveAgent` round-trip
+  before any user is asked to sign this in `apps/web` — see the OPEN VERIFICATION ITEM
+  comment directly above that constant in the source for what "confirmed" means here.
+- ✅ `apps/worker/src/auto-trader` — Phase A, paper only, own QuickNode WS connection
+  (`signal-source.ts`, reuses `twap-watcher`'s `QuicknodeTwapSource`/`MidPriceCache`
+  unmodified rather than duplicating them). Full pipeline wired: tier classification
+  (`tier-config.ts` — **coin-tier membership beyond the spec's own ZEC/HYPE/ARB/UNI examples
+  is a PLACEHOLDER, not customer-confirmed**, defaults an unclassified coin to the stricter
+  Tier A rather than silently favoring it) → `l2Book`-based price impact → Trust Score
+  (`trust-score-store.ts` + `trust-classification.ts`, DB-backed insert-only event log) →
+  parallel-flow counter-check → per-account fan-out through `risk-guard.ts` (global kill
+  switch + per-account soft pause + daily loss limit) → `paper-execution-adapter.ts` (pure
+  simulation, implements `trading-core`'s `ExecutionAdapter`) → `position-monitor.ts` polls
+  open trades for TP/SL. Every threshold-passing signal is logged to `trigger_evaluations`
+  regardless of outcome (opened/skipped/reduced), per that table's own purpose.
+  In-memory-only `ActiveTwapTracker` (no restart persistence) is a deliberate, documented
+  Phase A limitation, not a silent gap — see `active-twap-tracker.ts`'s doc comment.
+  Added `risk_limits.baseSizeUsd` via a new migration (0018) — the original 0017 shipped
+  without a per-account "how much to risk per trigger" setting, an oversight caught while
+  wiring this. Small, behavior-preserving edits to existing `twap-watcher` files were needed
+  (see their own doc comments) to let auto-trader distinguish "stopped" (price-boundary
+  self-stop, not scored) from "terminated" (real cancel, scored) — verified as a no-op for
+  twap-watcher's own published output. 77/77 tests passing repo-wide (50 trading-core + 12
+  hyperliquid-sdk + 10 worker + 5 api). Reviewed by `hyperliquid-api-reviewer` (2026-09-22): **no
+  factual errors found**, including the highest-stakes item — `trigger-pipeline.ts`'s
+  `l2Book` bids/asks tuple ordering and buy→asks/sell→bids side-selection (drives every
+  SL/TP) — confirmed correct against the MCP's own worked L2-book example. One open,
+  explicitly-flagged item (not a bug): `trust-classification.ts`'s "stopped" semantics come
+  from QuickNode's own docs, outside the hyperliquid-docs MCP's coverage — the reviewer could
+  not independently verify it through its own tools; re-confirm against QuickNode's docs (or
+  a live stopPx TWAP) before trusting it for a Phase B/live scoring decision — see that
+  file's own doc comment.
+- ✅ `apps/api` trading routes (`modules/trading/routes.ts`) — link start/confirm (agent
+  keypair generation + `approveAgent` EIP-712 payload, user's own wallet signs client-side,
+  we submit the pre-signed action), account status toggle (soft pause), risk limits CRUD,
+  leaderboard (ranked by `effectiveScore`), trades feed. Agent private key encrypted at rest
+  (AES-256-GCM, `crypto.ts`, 5 round-trip/tamper tests). Entire module idle unless
+  `AUTO_TRADER_LINKING_ENABLED=true` (default false) — this is the one path in the whole
+  feature that can reach real Hyperliquid, so it stays off until the `signatureChainId` open
+  verification item (see hyperliquid-sdk entry above) is actually confirmed on testnet.
+- ✅ `apps/web/src/features/trading/` — the unified page (`TradingPage.tsx`), reachable from
+  the account menu ("Auto-trading", `Header.tsx`), reusing the existing full-page-overlay
+  pattern (`GuidePage`/`useMiniAppBackButton`) rather than adding a router. Sections:
+  `AccountLinkCard` (connect wallet → sign `approveAgent` → confirm), `RiskLimitsForm`
+  (baseSizeUsd/maxPositionUsd/maxDailyLossUsd), `LeaderboardTable` (ranked by
+  `effectiveScore`, shows a Blocked badge), `TradesTable` (paper trades, polls every 15s). A
+  persistent "Paper mode" banner makes it unambiguous nothing here is real money yet.
+  Wallet signing (`lib/wallet.ts`) is a minimal EIP-1193 wrapper around the browser's
+  injected `window.ethereum` — no viem/wagmi added, same "smallest dependency that does the
+  job" call as `hyperliquid-sdk`'s `@noble/*` choice over a full wallet SDK.
+  **Standalone-site only, by design** — a Telegram Mini App WebView doesn't inject
+  `window.ethereum`; `AccountLinkCard` detects Mini App context and tells the user to open
+  the site in a real browser instead of showing a button that would silently do nothing. A
+  real Mini-App-compatible wallet flow needs actual WalletConnect integration, a separate,
+  larger feature not built in this pass. All the OTHER sections (leaderboard, account
+  status, risk settings, trade history) work in both contexts once a wallet is linked from
+  the standalone site once. Typecheck/lint/production `vite build` all pass; the linking
+  flow's actual browser+wallet behavior is NOT verified end-to-end (no Docker in this
+  sandbox, see the entry below, and no real wallet extension to click through here either).
+- ⬜ **Local end-to-end check not done** — this sandbox has no Docker, so Postgres/the full
+  dev stack could not be brought up here (`apps/api` fails fast on `ECONNREFUSED 5432`
+  without one). Typecheck/lint/tests are the only verification that's actually run. Run
+  `run-local-dev`'s boot sequence yourself to exercise the real HTTP surface before trusting
+  it end to end.
+- ✅ **`code-review` (high effort) pass, 2026-09-23** over the full DS-014 diff — 10
+  correctness findings, all fixed: network-detection env vars now zod-validated and fail
+  toward testnet instead of raw `process.env` failing toward mainnet
+  (`apps/api`/`apps/worker` env + `isMainnet()`); a TOCTOU race could open two positions for
+  the same account+coin (fixed with a Postgres partial unique index,
+  `auto_trades_open_account_coin_unique`, migration `0021`, plus `onConflictDoNothing`);
+  `trigger_evaluations.decision` could read "opened" even when the global kill switch
+  blocked every trade (kill-switch check moved before that insert); a trigger's own TWAP
+  counted itself in its own parallel-flow counter-check (excluded by `externalId` now); an
+  unrecognized QuickNode TWAP status was dropped with no log (now warns, matching
+  `twap-watcher`'s own pattern); `PATCH /trading/risk-limits` could silently no-op and still
+  answer `{ok:true}` if linking hadn't finished (now checks `.returning()` and 404s); a
+  parallel TWAP with no cached mid price was tracked as a fake $0 entry instead of omitted;
+  `updateRiskLimitsBodySchema` coerced money through a JS float before storage (switched to
+  a validated decimal string, no float round-trip); `decryptAgentKey` could leak a raw Node
+  crypto error instead of its documented `AgentKeyDecryptionError` on malformed input (now
+  fully inside the `try`); and a regression from this same day's earlier "stopped vs
+  terminated" fix could have collided a future unrecognized status's `externalId` with a
+  real "terminated" event (fixed by keying off the raw status for unrecognized cases only).
+  Also fixed: this section's own stale "no code until a plan is confirmed" framing (updated
+  above), and clarified that "agent keys ... used only by a dedicated worker process" means
+  signing, not generation/storage (see the constraint's own note below). 79/79 tests passing
+  repo-wide (50 trading-core + 12 hyperliquid-sdk + 10 worker + 7 api).
+- ✅ **Second `code-review` (high effort) pass, 2026-09-23** over the diff since the first
+  pass, including `apps/web`'s new trading UI — 10 findings, all fixed: `AccountLinkCard`'s
+  `linkStatus === "pending"` resume-linking UI was dead code (the earlier generic `!linked`
+  check always caught it first — reordered so pending is checked first);
+  `trust-score-store.ts`'s `recordEvent()` (insert + recompute) had no DB transaction, risking
+  a lost-update race between concurrent TWAP status transitions for the same wallet
+  corrupting the cached score/confidence/blocked that gates real position sizing (now wrapped
+  in `db.transaction`); `PaperExecutionAdapter.getPosition()` returned `PositionSnapshot.size`
+  as raw `sizeUsd` (dollars) instead of base-asset quantity, contradicting the field's own
+  documented unit (fixed, now derived the same way `computePnl` already does internally);
+  `trigger-pipeline.ts` called `hyperliquid-sdk`'s `getL2Book`/`HYPERLIQUID_REST_URLS`
+  directly, contradicting `execution-adapter.ts`'s own documented promise that the trigger
+  pipeline never calls an exchange SDK directly (fixed by adding an `OrderBookSource`
+  interface to `packages/trading-core`, mirroring `SignalSource`/`ExecutionAdapter`, with a
+  `HyperliquidOrderBookSource` implementation in `apps/worker`, injected via
+  `TriggerPipelineDeps`); `trust-score-store.ts`'s `loadEvents()` did an unbounded SELECT of a
+  wallet's entire event history on every call (now bounded to a 180-day window — past
+  `decayHalfLifeDays`/`maturityDays`, older events contribute a negligible, bounded amount
+  either way); `trigger-pipeline.ts`'s per-account loop called `hasOpenPosition`/
+  `todaysRealizedLossUsd` as separate queries per account, up to 2N sequential DB round-trips
+  per triggering signal (fixed with batched `openPositionsByAccount`/
+  `todaysRealizedLossUsdByAccount` on `risk-guard.ts`, precomputed once before the loop);
+  `active-twap-tracker.ts`'s in-memory map was only pruned on an explicit terminal-status
+  `remove()`, so a dropped/unparsed WS frame leaked that entry for the worker's remaining
+  uptime (fixed with a lazy eviction sweep on every `all()` call, past Hyperliquid's
+  documented 7-day max TWAP duration). **Also raised as an architectural question rather than
+  silently fixed** (per this file's own "no exceptions" money rule): `packages/trading-core`
+  and `apps/worker/auto-trader` computed money (position sizes, tier thresholds, price
+  impact, PnL, daily-loss aggregation) via JS `number`/float internally, contradicting the
+  decimal-string-only rule — the same pattern already fixed once for
+  `updateRiskLimitsBodySchema` in the first review pass, but not applied consistently
+  elsewhere. Customer chose full migration now, not defer-and-document. Done: added
+  `decimal.js` to `packages/trading-core` (`money.ts` — money crosses every public function
+  boundary as a decimal string, `Decimal` is purely an internal computation detail, never
+  part of a public interface); converted `position-sizing.ts`, `tier-thresholds.ts`,
+  `price-impact.ts`, `parallel-flow.ts` (+ their tests) to decimal strings for every money
+  field; `hyperliquid-sdk`'s `findDayNtlVlm()` now returns the raw decimal string instead of
+  casting to `Number`; `apps/worker/auto-trader`'s `risk-guard.ts`, `paper-execution-adapter.ts`,
+  `position-monitor.ts`, `trigger-pipeline.ts`, `index.ts`, `market-data-cache.ts`,
+  `tier-config.ts` all converted. Deliberately NOT touched — not money per this file's own
+  definition ("Monetary amounts (USDC, PnL, volumes)"), stays plain `number`:
+  `trust-score.ts`'s scores/confidence/multipliers (dimensionless calibration parameters),
+  percentages (`maxMovePct`), ratios, durations. `MidPriceCache` (apps/worker/src/twap-watcher,
+  shared with twap-watcher, not modified per the "extend, don't touch old functionality" rule)
+  still returns `number` — each auto-trader file converts it to `Decimal` at one clearly
+  marked point, its sole blessed conversion boundary. Verified with `hyperliquid-api-reviewer`
+  (2026-09-23) that no endpoint/field/subscription drift snuck in alongside the numeric-type
+  change. 82/82 tests passing repo-wide (50 trading-core + 12 hyperliquid-sdk + 13 worker + 7
+  api) — 3 new worker tests added for `active-twap-tracker.ts`'s eviction sweep.
+- ✅ **Third `code-review` (max effort, 10-parallel-angle) pass, 2026-09-23** — run before the
+  first production deploy, specifically focused on deploy safety (env/config handling,
+  migration safety, anything reachable on real Hyperliquid if `AUTO_TRADER_LINKING_ENABLED`/
+  `USE_REAL_AUTO_TRADER` flip on). Confirmed the diff is almost entirely additive (removed-
+  behavior audit came back clean). 8 findings fixed:
+  `buildApproveAgentTypedData()` (hyperliquid-sdk `signing.ts`) omitted an explicit
+  `EIP712Domain` entry in its `types` object — harmless for a library like viem that
+  auto-injects it, but `apps/web/src/lib/wallet.ts` calls the raw `eth_signTypedData_v4`
+  JSON-RPC method directly (no viem/wagmi, by design), and a real wallet extension requires
+  `EIP712Domain` explicit to hash the domain separator — the entire linking flow would have
+  failed inside the user's own wallet on the very first real click-through (fixed, plus a
+  test); `POST /trading/link/start` unconditionally overwrote an existing `trading_accounts`
+  row via `onConflictDoUpdate` even when `linkStatus === "linked"` — a double-click, browser
+  back/forward, or retry after an ambiguous network response would silently destroy the only
+  copy of an already-Hyperliquid-approved agent's private key, making that agent permanently
+  uncontrollable (fixed — now 409s if already linked); `trigger-pipeline.ts`'s `decision`
+  label only checked `counterFlow.sizeMultiplier`, never `trustEval.sizeMultiplier`, even
+  though actual position size is the product of both — silently mislabeled every
+  trust-reduced-but-not-counter-flow-reduced trade as `"opened"` in `trigger_evaluations`,
+  the exact table this whole calibration effort depends on (fixed); `PositionMonitor.tick()`'s
+  DB select wasn't wrapped in try/catch unlike every per-trade check inside its own loop, and
+  nothing downstream ever awaits/catches it — a transient DB hiccup would crash the whole
+  auto-trader process, violating "each worker must not go down together" (fixed, plus a
+  reentrancy lock and a `WHERE status='open'` guard on the closing UPDATE for the related,
+  now-far-less-likely overlapping-tick race); `AGENT_KEY_ENCRYPTION_KEY`'s env schema checked
+  only string length, not that it's actually hex — a non-hex 64-char value would pass startup
+  validation and then fail with a raw, undocumented Node crypto error on the first real
+  `encryptAgentKey()` call instead of failing fast at boot (fixed with a hex regex);
+  `getL2Book` (hyperliquid-sdk) had no fetch timeout despite now being called synchronously
+  mid-trigger-evaluation past every cheaper gate — an unbounded hang would silently mean that
+  signal's `trigger_evaluations` row (documented as "exactly one row per signal") never gets
+  written (fixed with a 5s `AbortSignal.timeout`); `trust-score-store.ts`'s `loadEvents()`
+  history-window cutoff was anchored to wall-clock `Date.now()` while decay/confidence math
+  used the caller's own `now` (the triggering signal's `occurredAt`) — a worker restart
+  catching up on a backlog would window events inconsistently with the evaluation's own
+  stated "now" (fixed — cutoff now threads the same `now` through); dead code —
+  `RiskGuard.todaysRealizedLossUsd()`/`hasOpenPosition()` (the pre-batching singular methods)
+  had zero remaining callers after the second review pass introduced their batch replacements,
+  left to rot side by side (removed).
+  **Also raised as a real correctness bug needing a decision, not silently fixed:**
+  `computeNetFlow()` (parallel-flow.ts, spec §7) only counted an `ActiveTwap` whose
+  `activatedAt` fell inside the last `windowMinutes` — contradicting spec §7's own worked
+  example (10 sixty-minute buy-TWAPs started 12-20 minutes ago, still executing, must count
+  as pressure) and locked in by a test asserting the wrong behavior as intended. Customer
+  chose: fix now, count every currently-active TWAP with no time-based window at all (the
+  tracker already only holds non-terminal TWAPs by construction, so being "active" already
+  means "still running" — a second time-window filter on top was redundant/wrong, not a
+  second layer of real protection). Done: `computeNetFlow(activeTwaps, coin)` dropped its
+  `now`/`windowMinutes` parameters entirely; `PARALLEL_FLOW_WINDOW_MINUTES` env var and
+  `TriggerPipelineDeps.parallelFlowWindowMinutes` removed as now-dead config;
+  `active-twap-tracker.ts`'s restart-recovery doc comment corrected (no longer "self-healing
+  within a fixed window" — a TWAP active before a restart now stays invisible for the rest of
+  its own run, up to Hyperliquid's 7-day max, not a bounded window); test rewritten to assert
+  the corrected behavior. Not touched by this fix, deferred as Phase-B-design gaps rather than
+  live bugs today (no code path sets `tradingAccounts.mode = "live"` yet): `PositionMonitor`
+  closes trades by flipping the DB row directly rather than through
+  `ExecutionAdapter.closePosition()` (zero call sites for `closePosition`/`getPosition`
+  anywhere), and only one global `ExecutionAdapter` instance is wired in regardless of
+  per-account `mode` — both mean `execution-adapter.ts`'s own claim that promoting an account
+  from paper to live is "a matter of swapping which adapter instance it's wired to, not a
+  pipeline rewrite" is not fully true yet; revisit when Phase B is actually planned. Also
+  deferred: `apps/web`'s `useTrades`/`useLeaderboard` polling hooks are structurally identical
+  hand-rolled duplicates of the pre-existing `useSubscription` pattern (a shared
+  `usePolledResource` would collapse them) — cosmetic, not a correctness issue.
+  83/83 tests passing repo-wide (50 trading-core + 13 hyperliquid-sdk + 13 worker + 7 api).
+
 ## Claude Design workflow for apps/web
 
 Do not design screens in Claude Design before `apps/web` has a basic skeleton with real design tokens and a handful of base components — designing in a vacuum first produces screens that don't match the project's actual tokens/components and have to be reconciled later.

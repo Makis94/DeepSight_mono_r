@@ -1,0 +1,7 @@
+{
+  "extends": "@hypertracker/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}
