@@ -8,9 +8,16 @@ interface HeaderProps {
   onSignOut: () => void;
   onOpenSubscription: () => void;
   onOpenGuide: () => void;
+  onOpenTrading: () => void;
 }
 
-export function Header({ session, onSignOut, onOpenSubscription, onOpenGuide }: HeaderProps) {
+export function Header({
+  session,
+  onSignOut,
+  onOpenSubscription,
+  onOpenGuide,
+  onOpenTrading,
+}: HeaderProps) {
   const displayName = session.username ? `@${session.username}` : (session.firstName ?? "Trader");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   // Starts false and only ever flips true on a real onLoad — the letter is the base layer
@@ -85,6 +92,17 @@ export function Header({ session, onSignOut, onOpenSubscription, onOpenGuide }: 
               }}
             >
               Guide
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="ht-account-menu-item"
+              onClick={() => {
+                setIsMenuOpen(false);
+                onOpenTrading();
+              }}
+            >
+              Auto-trading
             </button>
             <button
               type="button"

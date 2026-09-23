@@ -8,6 +8,7 @@ import { GuidePage } from "./features/guide/GuidePage.js";
 import { SubscriptionGate } from "./features/subscription/SubscriptionGate.js";
 import { SubscriptionPopup } from "./features/subscription/SubscriptionPopup.js";
 import { useSubscription } from "./features/subscription/useSubscription.js";
+import { TradingPage } from "./features/trading/TradingPage.js";
 import { getSession, logout } from "./lib/api.js";
 import { setMiniAppToken } from "./lib/mini-app-session.js";
 import { onSessionExpired } from "./lib/session-events.js";
@@ -21,6 +22,10 @@ export function App() {
   const [isBootstrapping, setIsBootstrapping] = useState(!isMiniApp());
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  // Reachable regardless of subscription status (like Guide) — trading has its own
+  // independent gate (AUTO_TRADER_LINKING_ENABLED server-side, wallet linking client-side),
+  // not the dashboard's trial/subscription gate.
+  const [isTradingOpen, setIsTradingOpen] = useState(false);
   const handleAuthenticated = useCallback((newSession: Session) => {
     setSession(newSession);
   }, []);
@@ -90,9 +95,12 @@ export function App() {
           onSignOut={handleSignOut}
           onOpenSubscription={() => setIsSubscriptionOpen(true)}
           onOpenGuide={() => setIsGuideOpen(true)}
+          onOpenTrading={() => setIsTradingOpen(true)}
         />
         {isGuideOpen ? (
           <GuidePage onClose={() => setIsGuideOpen(false)} />
+        ) : isTradingOpen ? (
+          <TradingPage session={session} onClose={() => setIsTradingOpen(false)} />
         ) : (
           <>
             {subscription.status === "loading" && <p className="ht-signing-in">Loading…</p>}

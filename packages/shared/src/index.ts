@@ -6,5 +6,6 @@ export * from "./schemas/settings.js";
 export * from "./schemas/coins.js";
 export * from "./schemas/subscription.js";
 export * from "./schemas/admin.js";
+export * from "./schemas/trading.js";
 export * from "./auth/index.js";
 export * from "./payments/index.js";

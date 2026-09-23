@@ -1,0 +1,1 @@
+ALTER TABLE "risk_limits" ADD COLUMN "base_size_usd" numeric DEFAULT '50' NOT NULL;

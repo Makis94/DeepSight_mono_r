@@ -138,3 +138,39 @@ export function createSubscriptionWatcherEnv(defaultHeartbeatPort: number) {
 }
 
 export type SubscriptionWatcherEnv = ReturnType<typeof createSubscriptionWatcherEnv>;
+
+export function createAutoTraderEnv(defaultHeartbeatPort: number) {
+  return baseEnvSchema
+    .extend({
+      HEARTBEAT_PORT: z.coerce.number().int().positive().default(defaultHeartbeatPort),
+      // Same flag/URL twap-watcher reads (createTwapWatcherEnv) — auto-trader opens its OWN
+      // separate WS connection (each worker is an independent process per CLAUDE.md), but
+      // both read the same QuickNode credential from the same .env.
+      USE_REAL_QUICKNODE_TWAP: booleanEnvFlag(false),
+      QUICKNODE_HYPERCORE_WSS_URL: z.string().url().optional(),
+      // Phase A (paper trading) only — see CLAUDE.md's TWAP auto-trading section. Never
+      // submits anything to Hyperliquid; this flag exists so the worker can run fully idle
+      // (no trades, just logging) until Phase A is actually confirmed ready.
+      USE_REAL_AUTO_TRADER: booleanEnvFlag(false),
+      // How often packages/trading-core's tier-thresholds.ts inputs (dayNtlVlm per coin,
+      // via getMetaAndAssetCtxs) are refreshed. Info request weight 20 (hyperliquid-docs
+      // MCP, verified 2026-09-20) — minutes-scale, not per-signal.
+      MARKET_DATA_REFRESH_INTERVAL_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(5 * 60_000),
+      // How often open auto_trades (paper mode) are checked against current mid price for a
+      // SL/TP hit. Uses the same REST allMids poll pattern as twap-watcher's MidPriceCache
+      // (weight 2), not a WS subscription.
+      POSITION_MONITOR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
+      // Validated, safe-default-to-testnet — same rationale as apps/api's identically-named
+      // var (see that file's comment, code-review 2026-09-23): Phase A never signs/submits
+      // anything live, but this worker will feed the SAME network choice into Phase B's
+      // order-signing eventually, so it starts strict now rather than later.
+      HYPERLIQUID_NETWORK: z.enum(["mainnet", "testnet"]).default("testnet"),
+    })
+    .parse(process.env);
+}
+
+export type AutoTraderEnv = ReturnType<typeof createAutoTraderEnv>;
