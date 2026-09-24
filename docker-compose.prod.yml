@@ -65,6 +65,14 @@ services:
     env_file: .env
     environment:
       <<: *env-common
+      # DS-014, 2026-09-24: explicit per-service override, NOT set in the shared root .env —
+      # a HYPERLIQUID_NETWORK=testnet in .env would leak into every OTHER service reading the
+      # same file (market-watcher, wallet-watcher, common-wallet-tracker, twap-watcher), none
+      # of which want testnet — confirmed as a real incident (market-watcher's real-mainnet
+      # large-trade monitoring for actual users silently redirected to testnet for hours).
+      # Only apps/api's /trading routes (approveAgent) need testnet right now, pending a
+      # separate mainnet decision.
+      HYPERLIQUID_NETWORK: testnet
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,6 +153,11 @@ services:
     environment:
       <<: *env-common
       HEARTBEAT_PORT: "9108"
+      # Explicit, matching apps/api's own override above and the same reasoning — this
+      # worker's mid-price/l2Book/metaAndAssetCtxs reads must stay consistent with the
+      # testnet-only linking flow, not leak from (or into) the shared root .env that every
+      # other, mainnet-only worker also reads.
+      HYPERLIQUID_NETWORK: testnet
     command: ["node", "dist/auto-trader/index.js"]
 
 networks:
