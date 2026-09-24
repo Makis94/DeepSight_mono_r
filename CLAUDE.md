@@ -558,6 +558,20 @@ separate account-settings route. One page contains:
      scoped to whichever feature a variable was added for — any new env var meant for one
      service only belongs in that service's own `environment:` override, never the shared file,
      unless it's genuinely meant for everyone.**
+- ✅ **First full paper-trade lifecycle, 2026-09-24** — right after the mainnet market-data
+  fix above went live: a real DOGE sell-TWAP signal ($225,597, wallet
+  `0xccf3fff396a14d55d93366f870c007425e9f2a75`) cleared the Tier A threshold ($116,928,
+  computed from real mainnet `dayNtlVlm`), evaluated at a near-neutral trust score (0.0066 —
+  a low-confidence, presumably new wallet), sized to the account's `baseSizeUsd` ($50),
+  opened as `auto_trades` row 1, and was closed by `position-monitor.ts` on a stop-loss hit
+  ~8 seconds later (realized PnL -$0.03, paper only). First real end-to-end confirmation of
+  the whole pipeline (signal → tier threshold → trust score → price-impact SL/TP → position
+  sizing → paper open → SL/TP monitoring → close) working together, not just unit-tested in
+  isolation. **Calibration observation, not a bug** (formulas are still explicitly
+  unconfirmed placeholders per this section's own framing): an 8-second SL hit on DOGE is
+  fast — worth watching whether this repeats once more trades accumulate, as a signal the
+  price-impact-derived stop might be too tight relative to normal short-term noise for
+  liquid coins.
 
 ## Claude Design workflow for apps/web
 
