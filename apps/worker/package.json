@@ -31,7 +31,6 @@
     "@hypertracker/hyperliquid-sdk": "workspace:*",
     "@hypertracker/shared": "workspace:*",
     "@hypertracker/trading-core": "workspace:*",
-    "@noble/hashes": "^2.3.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.38.3",
     "pino": "^9.5.0",
