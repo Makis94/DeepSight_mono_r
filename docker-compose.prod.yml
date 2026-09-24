@@ -153,11 +153,18 @@ services:
     environment:
       <<: *env-common
       HEARTBEAT_PORT: "9108"
-      # Explicit, matching apps/api's own override above and the same reasoning — this
-      # worker's mid-price/l2Book/metaAndAssetCtxs reads must stay consistent with the
-      # testnet-only linking flow, not leak from (or into) the shared root .env that every
-      # other, mainnet-only worker also reads.
-      HYPERLIQUID_NETWORK: testnet
+      # mainnet, NOT testnet — confirmed 2026-09-24: this worker's TWAP signals (QuickNode
+      # HyperCore) are real mainnet activity, but its market-data reads (mid price, l2Book,
+      # metaAndAssetCtxs' dayNtlVlm) were pointed at testnet, where ZEC (Tier A's base coin,
+      # the default tier for most coins) has ZERO trading volume — every Tier A tier-threshold
+      # check silently failed the "market data not warm yet" guard, so not a single
+      # trigger_evaluations row was ever written despite a full day of real signal traffic.
+      # auto-trader never signs or submits anything to Hyperliquid (that's apps/api's
+      # /trading routes only, which stays on testnet independently, see its own override
+      # above) — this var here is purely about which network's read-only market data to
+      # fetch, so mainnet is correct and safe. Revisit if/when Phase B adds real order signing
+      # to this worker (its own env.ts doc comment already flagged this exact tension).
+      HYPERLIQUID_NETWORK: mainnet
     command: ["node", "dist/auto-trader/index.js"]
 
 networks:

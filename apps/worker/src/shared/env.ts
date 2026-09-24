@@ -164,10 +164,19 @@ export function createAutoTraderEnv(defaultHeartbeatPort: number) {
       // SL/TP hit. Uses the same REST allMids poll pattern as twap-watcher's MidPriceCache
       // (weight 2), not a WS subscription.
       POSITION_MONITOR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
-      // Validated, safe-default-to-testnet — same rationale as apps/api's identically-named
-      // var (see that file's comment, code-review 2026-09-23): Phase A never signs/submits
-      // anything live, but this worker will feed the SAME network choice into Phase B's
-      // order-signing eventually, so it starts strict now rather than later.
+      // Schema default stays testnet (safe-by-default for an unset/typo'd var, same rationale
+      // as apps/api's identically-named var) — but PROD OVERRIDES THIS TO MAINNET explicitly
+      // in docker-compose.prod.yml's auto-trader service. Found live, 2026-09-24: this var
+      // ALSO governs this worker's read-only market-data fetches (mid price, l2Book,
+      // metaAndAssetCtxs), which must stay consistent with the REAL mainnet TWAP signals this
+      // worker observes via QuickNode — testnet has near-zero real liquidity for the coins
+      // that matter (e.g. ZEC, Tier A's base coin, has zero testnet dayNtlVlm), so leaving
+      // this on testnet silently failed every Tier A tier-threshold check with no
+      // trigger_evaluations rows ever written. auto-trader never signs/submits to
+      // Hyperliquid today (only apps/api's /trading routes do, and stay testnet
+      // independently) — revisit this default/override split if/when Phase B adds real order
+      // signing to THIS worker, at which point market-data-network and signing-network may
+      // legitimately need to be two separate variables, not one.
       HYPERLIQUID_NETWORK: z.enum(["mainnet", "testnet"]).default("testnet"),
     })
     .parse(process.env);
