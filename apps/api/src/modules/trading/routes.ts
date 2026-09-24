@@ -44,6 +44,25 @@ function isMainnet(): boolean {
   return env.HYPERLIQUID_NETWORK === "mainnet";
 }
 
+// Turns Hyperliquid's own approveAgent rejection text into something actionable for an end
+// user — verified live 2026-09-24 (real testnet round-trip, see signing.ts's doc comment):
+// a wallet with no Hyperliquid account yet gets exactly this message, and the fix is to
+// deposit (or, for a test wallet, use the testnet faucet, which itself requires a mainnet
+// deposit on the same address first — hyperliquid-docs MCP's own testnet-faucet page).
+// Deliberately narrow: only the one rejection reason actually observed gets a friendly
+// rewrite; anything else falls back to relaying Hyperliquid's own message rather than
+// guessing at wording for error text this project has never actually seen.
+function friendlyApproveAgentError(hyperliquidMessage: string): string {
+  if (hyperliquidMessage.includes("Must deposit before performing actions")) {
+    return (
+      "This wallet has no Hyperliquid account yet. Deposit funds into it on Hyperliquid " +
+      "first — for a testnet wallet, that means depositing on mainnet with the same address, " +
+      "then using the testnet faucet (app.hyperliquid-testnet.xyz/drip) — then try linking again."
+    );
+  }
+  return `Hyperliquid rejected the request: ${hyperliquidMessage}`;
+}
+
 /**
  * The wallet-linking + account-settings + leaderboard routes behind CLAUDE.md's unified
  * apps/web trading page (2026-09-22 decision). Idle (routes never registered) unless
@@ -213,9 +232,15 @@ export function tradingRoutes(app: FastifyInstance, db: Database): void {
           { err: err.message, telegramId: session.telegramId },
           "approveAgent rejected by Hyperliquid",
         );
-        await reply
-          .status(502)
-          .send({ error: `Hyperliquid rejected the approval: ${err.message}` });
+        // 422, not 502 — Hyperliquid understood and validated the signed action fine; this is
+        // Hyperliquid's own business-rule rejection (an account-state fact), not our upstream
+        // dependency being down, which is what 502 tells a client (code-review-shaped finding,
+        // 2026-09-24: a real testnet round-trip surfaced this as a raw, alarming-looking "502
+        // Bad Gateway" in the browser for a fully expected, actionable case — the wallet has
+        // no Hyperliquid account yet). friendlyApproveAgentError() only special-cases the one
+        // rejection reason actually observed and verified live; anything else falls back to
+        // relaying Hyperliquid's own message rather than guessing at unobserved error text.
+        await reply.status(422).send({ error: friendlyApproveAgentError(err.message) });
         return;
       }
       throw err;
