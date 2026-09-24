@@ -463,6 +463,42 @@ separate account-settings route. One page contains:
   hand-rolled duplicates of the pre-existing `useSubscription` pattern (a shared
   `usePolledResource` would collapse them) — cosmetic, not a correctness issue.
   83/83 tests passing repo-wide (50 trading-core + 13 hyperliquid-sdk + 13 worker + 7 api).
+- ✅ **First production deploy, 2026-09-23/24** — merged to `main`, deployed via
+  `scripts/deploy.sh`. Two real gaps found and fixed only by actually deploying (neither
+  caught by typecheck/lint/tests, since they're deploy-topology/dependency-resolution
+  issues, not application logic):
+  1. `docker-compose.prod.yml` had no `auto-trader` service at all — every other worker
+     runs as its own container per CLAUDE.md's "each worker independent" rule, but the new
+     worker was simply never added to prod's compose file, so the code would have shipped
+     with no running process for it. Fixed by adding the service (mirroring the existing
+     `twap-watcher` pattern, `HEARTBEAT_PORT=9108`) and registering it with the Telegram
+     health-watchdog's port map (`apps/bot/src/modules/health-watchdog/index.ts`) — gated on
+     the same deploy that enables `USE_REAL_AUTO_TRADER`, so it never reports the
+     intentionally-idle pre-enable state as a false alarm (the exact DS-010 failure mode).
+  2. `apps/worker/package.json` had a stray **direct** dependency on `@noble/hashes@^2.3.0`
+     that apps/worker never itself imports (only `packages/hyperliquid-sdk` does, correctly
+     declaring `^1.6.1`). Because tsup bundles `@hypertracker/*` source directly into
+     apps/worker's own dist output (`noExternal`), the bundled `agent-wallet.ts` code's
+     `@noble/hashes/sha3` import resolved at runtime against apps/worker's OWN
+     `node_modules` — which had v2.3.0 installed (from the stray dependency), whose
+     restructured exports no longer expose a `./sha3` subpath. Result: **6 of 8 worker
+     containers crash-looped in production for ~10 hours** (every worker whose bundle
+     transitively includes hyperliquid-sdk) between the deploy landing and this being caught
+     — `deposit-watcher`/`subscription-watcher`/`api` were unaffected (don't pull in that
+     chunk), `auto-trader`/`wallet-watcher`/`market-watcher`/`twap-watcher`/
+     `coin-registry-sync`/`common-wallet-tracker` were down. Fixed by removing the unused
+     dependency entirely; redeployed and confirmed all containers healthy, no crash-loop.
+     **Lesson for future dependency changes to `apps/worker` or `packages/hyperliquid-sdk`:
+     a clean local `pnpm --filter @hypertracker/worker typecheck` does NOT catch a wrong
+     transitive version winning package-manager resolution — only an actual `pnpm --filter
+@hypertracker/worker build` + running the built output (or a real deploy) does.**
+     After both fixes: full stack healthy, `auto-trader` connected to the QuickNode TWAP
+     stream (`network: "testnet"`, `HYPERLIQUID_NETWORK` unset in prod `.env`, defaults safe).
+     `USE_REAL_AUTO_TRADER=true` enabled in prod (market-observation/Trust-Score pipeline only
+     — no linked accounts possible, `AUTO_TRADER_LINKING_ENABLED` stays `false` pending the
+     `signatureChainId` testnet confirmation above). `trigger_evaluations`/`trust_scores` now
+     accumulating real data; no web UI for `trigger_evaluations` (DB-only, see
+     `docker exec hypertracker-postgres-1 psql -U hypertracker -d hypertracker` on the VM).
 
 ## Claude Design workflow for apps/web
 
