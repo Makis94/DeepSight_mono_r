@@ -1,8 +1,12 @@
 /* Trading page — reuses theme.css tokens and the shared .ht-page/.ht-section/.ht-btn/
    .ht-table/.ht-table-scroll/.ht-guide-back primitives (feed.css/guide.css) rather than
    redefining them, same convention as subscription-gate.css. Mobile-first: everything below
-   is the narrow-viewport baseline (single column, stacked form labels); nothing here widens
-   for desktop yet since none of it needs to — .ht-column already caps width via .ht-page. */
+   is the narrow-viewport baseline (single column, stacked form labels). One exception, see
+   .ht-trading-risk-form's own desktop media query below: feed.css's shared `.ht-section form
+   { flex-direction: row }` desktop rule (>=860px) has higher specificity than this file's own
+   `.ht-trading-risk-form { flex-direction: column }` and silently won regardless (found
+   2026-09-24 — the Save button floated up next to the labels instead of aligning with the
+   inputs below them, since the row layout was never actually designed for this 3-field form). */
 
 .ht-trading-banner {
   background: var(--bg-raised);
@@ -113,6 +117,28 @@
 
 .ht-trading-risk-form .ht-btn {
   align-self: flex-start;
+}
+
+/* Same breakpoint as feed.css's shared .ht-section form rule this is layered on top of —
+   explicitly re-declares flex-direction (that shared rule would otherwise win on
+   specificity alone) and, unlike the shared rule's plain input+button forms, aligns items to
+   the BOTTOM of the row: each label's span sits above its input, so flex-start (the shared
+   rule's implicit default) would float the button up next to the label text instead of next
+   to the inputs it visually belongs with. */
+@media (min-width: 860px) {
+  .ht-trading-risk-form {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+
+  .ht-trading-risk-form label {
+    flex: 1 1 160px;
+  }
+
+  .ht-trading-risk-form .ht-btn {
+    align-self: flex-end;
+  }
 }
 
 .ht-trading-badge {
