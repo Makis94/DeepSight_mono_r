@@ -29,6 +29,51 @@ export function hasInjectedWallet(): boolean {
 
 export class WalletError extends Error {}
 
+// Arbitrum Sepolia — the chain packages/hyperliquid-sdk's signing.ts's
+// USER_SIGNED_ACTION_SIGNATURE_CHAIN_ID ("0x66eee" = 421614) currently points at. Only used
+// as wallet_addEthereumChain fallback params if the wallet doesn't have this chain yet —
+// values are Arbitrum's own public testnet (standard, well-known, not Hyperliquid-specific).
+const ARBITRUM_SEPOLIA_PARAMS = {
+  chainId: "0x66eee",
+  chainName: "Arbitrum Sepolia",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"],
+  blockExplorerUrls: ["https://sepolia.arbiscan.io"],
+};
+
+/**
+ * Requests the wallet switch to `chainId` (decimal) before signing — MetaMask (confirmed
+ * 2026-09-24 against a real wallet, RPC error -32603 "Provided chainId ... must match the
+ * active chainId ...") rejects eth_signTypedData_v4 outright if `domain.chainId` doesn't
+ * match whatever chain the wallet currently has active FOR THIS SITE — which can differ from
+ * the wallet's global network selector, so asking the user to "just switch manually" isn't
+ * reliable. wallet_switchEthereumChain drives it explicitly instead. Error code 4902 means
+ * the wallet doesn't have this chain configured yet — falls back to wallet_addEthereumChain
+ * (Arbitrum Sepolia params only; any other chainId here is unexpected and left to fail loudly
+ * rather than silently guessing at chain metadata).
+ */
+async function ensureChain(provider: Eip1193Provider, chainId: number): Promise<void> {
+  const chainIdHex = `0x${chainId.toString(16)}`;
+  try {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: chainIdHex }],
+    });
+  } catch (err) {
+    const code = (err as { code?: number } | null)?.code;
+    if (code !== 4902) throw err;
+    if (chainIdHex !== ARBITRUM_SEPOLIA_PARAMS.chainId) {
+      throw new WalletError(
+        `Wallet doesn't have chain ${chainIdHex} configured, and no add-chain params are known for it.`,
+      );
+    }
+    await provider.request({
+      method: "wallet_addEthereumChain",
+      params: [ARBITRUM_SEPOLIA_PARAMS],
+    });
+  }
+}
+
 /** Prompts the browser wallet's connect dialog and returns the first authorized address, lowercased. */
 export async function connectWallet(): Promise<string> {
   const provider = window.ethereum;
@@ -57,6 +102,7 @@ export async function signTypedData(
   if (!provider) {
     throw new WalletError("No browser wallet found.");
   }
+  await ensureChain(provider, typedData.domain.chainId);
   const signature = (await provider.request({
     method: "eth_signTypedData_v4",
     params: [address, JSON.stringify(typedData)],
