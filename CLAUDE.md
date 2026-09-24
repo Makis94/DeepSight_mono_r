@@ -520,6 +520,44 @@ separate account-settings route. One page contains:
      `signatureChainId` testnet confirmation above). `trigger_evaluations`/`trust_scores` now
      accumulating real data; no web UI for `trigger_evaluations` (DB-only, see
      `docker exec hypertracker-postgres-1 psql -U hypertracker -d hypertracker` on the VM).
+- ✅ **Wallet-linking testnet round-trip, 2026-09-24** — a real user linked a real wallet
+  through `apps/web`'s Auto-trading page against Hyperliquid testnet, surfacing three more
+  real bugs only a live wallet+browser test could catch:
+  1. `buildApproveAgentTypedData()`'s `types` object was missing an explicit `EIP712Domain`
+     entry — a real wallet's raw `eth_signTypedData_v4` (this project deliberately doesn't
+     use viem/wagmi, which auto-injects it) throws without it. Fixed, with a test.
+  2. MetaMask rejects `eth_signTypedData_v4` outright if `domain.chainId` doesn't match the
+     wallet's currently-active-for-this-site network — confirmed via a real RPC error
+     (`-32603 "Provided chainId ... must match the active chainId ..."`), and this can differ
+     from the wallet's global network selector, so "ask the user to switch manually" isn't
+     reliable. Fixed by having `apps/web/src/lib/wallet.ts`'s `signTypedData()` call
+     `wallet_switchEthereumChain` (falling back to `wallet_addEthereumChain` with Arbitrum
+     Sepolia params on error 4902) before signing. **This test round-trip is also what
+     RESOLVED the signatureChainId OPEN VERIFICATION ITEM** — see
+     `packages/hyperliquid-sdk/src/signing.ts`'s own doc comment: Hyperliquid's testnet
+     `/exchange` accepted the signature and rejected the call only on an unrelated business
+     rule ("Must deposit before performing actions" — real, expected for a never-funded
+     testnet wallet; hyperliquid-docs MCP's testnet-faucet page: the faucet itself requires a
+     mainnet deposit on the same address first), never on signature/domain verification.
+  3. That rejection was relayed to the browser as a raw `502` with Hyperliquid's own wording
+     — reads as an infrastructure failure, not the expected/actionable state it is. Changed
+     to `422` with a plain-language message for this specific, verified rejection reason
+     (falls back to relaying Hyperliquid's own text for anything else, not guessing).
+     **Separately — a real incident this same round of testing caused, unrelated to the fixes
+     above:** setting `HYPERLIQUID_NETWORK=testnet` in the shared root `.env` (to gate the
+     linking test) leaked into every OTHER service reading the same `env_file` —
+     `market-watcher`/`wallet-watcher`/`common-wallet-tracker`/`twap-watcher` silently switched
+     from real mainnet Hyperliquid data to testnet for several hours, breaking real production
+     notifications for actual users (confirmed: `market-watcher`'s WS was connecting to
+     `wss://api.hyperliquid-testnet.xyz/ws` instead of mainnet). Fixed by moving
+     `HYPERLIQUID_NETWORK=testnet` to explicit per-service `environment:` overrides in
+     `docker-compose.prod.yml` on only `api` and `auto-trader` (the two services that actually
+     need it right now), removing it from the shared `.env` entirely; every other service's own
+     code already defaults to mainnet once the var is unset again. **Lesson: the shared root
+     `.env` (`env_file: .env` in every service block) is blast-radius-for-the-whole-stack, not
+     scoped to whichever feature a variable was added for — any new env var meant for one
+     service only belongs in that service's own `environment:` override, never the shared file,
+     unless it's genuinely meant for everyone.**
 
 ## Claude Design workflow for apps/web
 
