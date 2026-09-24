@@ -15,24 +15,24 @@ import { z } from "zod";
 //   - sign_agent() for ApproveAgent's specific field list and primaryType string
 //   - sign_user_signed_action() for signatureChainId/hyperliquidChain
 //
-// IMPORTANT, non-obvious, and NOT YET INDEPENDENTLY CONFIRMED — see the open item below:
-// the Python SDK hardcodes signatureChainId to "0x66eee" for every user-signed action
+// The Python SDK hardcodes signatureChainId to "0x66eee" for every user-signed action
 // regardless of mainnet/testnet ("signatureChainId is the chain used by the wallet to sign
 // and can be any chain" — verified directly in signing.py's own comment, 2026-09-22).
 //
-// OPEN VERIFICATION ITEM (flagged by hyperliquid-api-reviewer, 2026-09-22 — do not clear
-// this comment until it's actually been checked): the hyperliquid-docs MCP does not confirm
-// "0x66eee" anywhere and its own worked EIP-712 examples (SpotSend, withdraw3) use
+// CONFIRMED CORRECT — 2026-09-24, real testnet round-trip. This was an OPEN VERIFICATION
+// ITEM (flagged by hyperliquid-api-reviewer, 2026-09-22): the hyperliquid-docs MCP does not
+// confirm "0x66eee" anywhere and its own worked EIP-712 examples (SpotSend, withdraw3) use
 // "0xa4b1"/42161 (Arbitrum One) for BOTH "Mainnet" and "Testnet" hyperliquidChain values
-// instead. The MCP is silent on whether the value is truly arbitrary (as the Python SDK's
-// own comment claims) or whether "0xa4b1" is actually required and the SDK's example
-// happens to also use a value real deployments accept. This is exactly the "recovers a
-// different signer" failure mode the Signing docs (verified 2026-09-20) warn about, and the
-// MCP alone cannot settle it either way. BEFORE this signing.ts is wired into a real
-// apps/web linking flow: submit one real approveAgent action to
-// api.hyperliquid-testnet.xyz/exchange signed with "0x66eee" as built here, and confirm
-// Hyperliquid's testnet actually accepts it (not just that local signature recovery works —
-// the Signing docs explicitly warn local recovery succeeding is not sufficient proof).
+// instead — the MCP alone couldn't settle whether "0x66eee" was truly arbitrary (as the
+// Python SDK's own comment claims) or actually wrong. Resolved by doing exactly what this
+// comment used to ask for: a real MetaMask wallet signed a real approveAgent typed-data
+// payload built with "0x66eee" (domain chainId 421614, Arbitrum Sepolia), and Hyperliquid's
+// testnet /exchange ACCEPTED the signature — it rejected the call on an unrelated business
+// rule ("Must deposit before performing actions"), not on signature/domain verification. A
+// wrong signatureChainId would fail signature verification itself, not reach a downstream
+// account-state check — this is real evidence "0x66eee" is correct, not just that local
+// recovery succeeds (which the Signing docs, verified 2026-09-20, warn is not sufficient
+// proof on its own — this is the stronger, actual-server-acceptance check they ask for).
 export const USER_SIGNED_ACTION_SIGNATURE_CHAIN_ID = "0x66eee";
 
 export type HyperliquidChain = "Mainnet" | "Testnet";

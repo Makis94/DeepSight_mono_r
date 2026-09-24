@@ -51,10 +51,11 @@ function isMainnet(): boolean {
  * apps/worker's USE_REAL_* flags, since this is the one path in the whole feature that talks
  * to a real user wallet and (on confirm) submits a real signed action to Hyperliquid.
  *
- * IMPORTANT — OPEN VERIFICATION ITEM (see packages/hyperliquid-sdk/src/signing.ts, CLAUDE.md
- * 2026-09-22): the signatureChainId the approveAgent signature is built against was sourced
- * from the official Python SDK, not confirmed via the hyperliquid-docs MCP. Do not enable
- * this against mainnet before a real testnet approveAgent round-trip confirms it.
+ * signatureChainId (packages/hyperliquid-sdk/src/signing.ts) was an OPEN VERIFICATION ITEM
+ * until a real testnet approveAgent round-trip on 2026-09-24 confirmed it correct — see that
+ * file's own doc comment for what was checked and how. Still testnet-only in practice: this
+ * stays gated behind AUTO_TRADER_LINKING_ENABLED regardless, and enabling it against mainnet
+ * is a separate decision from the chainId question this comment used to be about.
  */
 export function tradingRoutes(app: FastifyInstance, db: Database): void {
   if (!env.AUTO_TRADER_LINKING_ENABLED) {

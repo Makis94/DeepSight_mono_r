@@ -258,13 +258,34 @@ separate account-settings route. One page contains:
   `null` for thin-liquidity/HIP-3 assets). **Real ORDER signing** (the agent wallet signing
   trade actions, msgpack+keccak+EIP-712 "Agent" struct) is Phase B only — Phase A's
   `PaperExecutionAdapter` never calls it, so it is deliberately NOT built yet.
-  **OPEN VERIFICATION ITEM, blocks going live with the linking flow (not blocking further
-  Phase A code):** `signing.ts`'s `USER_SIGNED_ACTION_SIGNATURE_CHAIN_ID = "0x66eee"` came
-  from the Python SDK's source, not the MCP docs — the MCP's own worked EIP-712 examples use
-  `"0xa4b1"` instead, and hyperliquid-api-reviewer confirmed the MCP does not corroborate
-  `0x66eee` either way. Must be confirmed with a real testnet `approveAgent` round-trip
-  before any user is asked to sign this in `apps/web` — see the OPEN VERIFICATION ITEM
-  comment directly above that constant in the source for what "confirmed" means here.
+  **OPEN VERIFICATION ITEM — RESOLVED 2026-09-24, `signatureChainId` confirmed correct:**
+  `signing.ts`'s `USER_SIGNED_ACTION_SIGNATURE_CHAIN_ID = "0x66eee"` came from the Python
+  SDK's source, not the MCP docs — the MCP's own worked EIP-712 examples use `"0xa4b1"`
+  instead, and hyperliquid-api-reviewer could not corroborate `0x66eee` either way. Real
+  testnet `approveAgent` round-trip done: a real MetaMask wallet signed the typed data built
+  with `0x66eee` (domain `chainId: 421614`, Arbitrum Sepolia — MetaMask itself enforces the
+  wallet's active-for-this-site network match `domain.chainId`, confirmed via a real RPC
+  error, see the two bugs below), and Hyperliquid's testnet `/exchange` **accepted the
+  signature** — it did not reject it as a bad signature/domain/chainId, it rejected it on an
+  unrelated, legitimate business rule ("Must deposit before performing actions" — the test
+  wallet has no mainnet deposit, see hyperliquid-docs MCP's own testnet-faucet page:
+  `app.hyperliquid-testnet.xyz/drip` requires the SAME address to have deposited on mainnet
+  first). A rejected/wrong signatureChainId would have failed signature verification, not
+  hit a downstream account-state rule — this is real evidence `0x66eee` is correct. Full
+  linking-flow confirmation (an actual `linkStatus: "linked"` row) still pending a funded
+  testnet wallet trying again, but the specific chainId risk this item existed for is closed.
+  **Two real bugs found and fixed only by actually testing this live** (neither was, or
+  could have been, caught by typecheck/lint/tests — both are runtime wallet-interaction
+  behavior): (1) `buildApproveAgentTypedData()`'s `types` object was missing an explicit
+  `EIP712Domain` entry — caught and fixed in the third code-review pass, before this test,
+  since it would have broken every real wallet's `eth_signTypedData_v4` outright. (2)
+  MetaMask rejects `eth_signTypedData_v4` if `domain.chainId` doesn't match the wallet's
+  currently-active-for-this-site network (RPC error -32603, confirmed live) — this can
+  differ from the wallet's global network selector, so "ask the user to switch manually"
+  isn't reliable. Fixed by having `apps/web/src/lib/wallet.ts`'s `signTypedData()` call
+  `wallet_switchEthereumChain` (falling back to `wallet_addEthereumChain` with Arbitrum
+  Sepolia params on error code 4902) before signing, instead of relying on the wallet
+  already being on the right network.
 - ✅ `apps/worker/src/auto-trader` — Phase A, paper only, own QuickNode WS connection
   (`signal-source.ts`, reuses `twap-watcher`'s `QuicknodeTwapSource`/`MidPriceCache`
   unmodified rather than duplicating them). Full pipeline wired: tier classification

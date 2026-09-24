@@ -35,10 +35,11 @@ const envSchema = z.object({
   // reflect-any-origin default the rest of apps/api's CORS uses.
   ADMIN_ORIGIN: z.string().url(),
   // Same "off by default, explicit opt-in" shape as apps/worker's USE_REAL_* flags — the
-  // trading routes create real agent keypairs and (once confirmed) submit a real signed
-  // approveAgent action to Hyperliquid. See CLAUDE.md's TWAP auto-trading section: the
-  // signatureChainId this relies on is still an OPEN VERIFICATION ITEM as of 2026-09-22 —
-  // do not flip this on against mainnet before that's confirmed on testnet.
+  // trading routes create real agent keypairs and submit a real signed approveAgent action
+  // to Hyperliquid. See CLAUDE.md's TWAP auto-trading section: the signatureChainId this
+  // relies on was confirmed correct via a real testnet round-trip on 2026-09-24 (see
+  // packages/hyperliquid-sdk/src/signing.ts) — still keep this off against mainnet until
+  // that's separately decided, the chainId confirmation only covered testnet.
   AUTO_TRADER_LINKING_ENABLED: z
     .enum(["true", "false"])
     .default("false")
