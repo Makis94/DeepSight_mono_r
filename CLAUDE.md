@@ -572,6 +572,23 @@ separate account-settings route. One page contains:
   fast — worth watching whether this repeats once more trades accumulate, as a signal the
   price-impact-derived stop might be too tight relative to normal short-term noise for
   liquid coins.
+- ⚠️ **Paper-model validity audit, 2026-09-25 (78 closed paper trades, ~1 day)** — headline
+  paper PnL (+$8.99, 46 TP / 32 SL) is **NOT trustworthy as a calibration signal yet**, found
+  by inspecting the rows rather than the totals: (1) **28 of 78 trades (36%) were malformed at
+  birth** — stop-loss on the wrong side of the recorded entry (e.g. XMR sell: entry 571.745,
+  SL 570.315), 5 more had TP on the wrong side. 18 of those closed as instant `closed_sl` at
+  ~$0 PnL (noise that pollutes the win-rate), 10 closed `closed_tp` (+$2.21, partly free
+  wins). Cause: the paper fill price comes from `MidPriceCache` (REST `allMids`, polled, can
+  lag) while SL/TP are anchored to the FRESH `l2Book` best level in `trigger-pipeline.ts` —
+  two different price references; and when the predicted impact is ~0 (TWAP notional fits in
+  the first book level) `maxMovePct=0` collapses SL=TP=touch price, which is on the wrong side
+  of a mid-priced entry. (2) **Fills are at mid with no spread, slippage or fees** — optimistic
+  for every trade, badly so on thin coins (SAGA buy: derived best ask ≈1.8% above the mid it
+  was "filled" at). (3) **PnL is concentrated**: SAGA+AZTEC+CC = 6 trades = +$5.65 of the +$9.5 TP total, all wide-spread small caps. (4) buys 53 trades +$8.21 vs sells 25 trades +$0.79 — one-day sample, market-drift confounder. Well-formed subset only (50 trades): 36
+  TP / 14 SL, +$6.80. **Before using paper results to decide anything about Phase B:** anchor
+  SL/TP to the actual fill price (single reference), skip/flag trades whose SL/TP geometry is
+  invalid or zero-width, fill at the touch (ask for buy / bid for sell) with a fee model, and
+  report PnL excluding thin-coin outliers. Not fixed yet — flagged, awaiting a decision.
 
 ## Claude Design workflow for apps/web
 
