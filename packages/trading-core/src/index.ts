@@ -6,4 +6,5 @@ export * from "./trust-score.js";
 export * from "./price-impact.js";
 export * from "./parallel-flow.js";
 export * from "./position-sizing.js";
+export * from "./paper-model.js";
 export { Decimal, money } from "./money.js";

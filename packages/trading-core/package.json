@@ -12,7 +12,8 @@
     "./price-impact": "./src/price-impact.ts",
     "./parallel-flow": "./src/parallel-flow.ts",
     "./position-sizing": "./src/position-sizing.ts",
-    "./order-book-source": "./src/order-book-source.ts"
+    "./order-book-source": "./src/order-book-source.ts",
+    "./paper-model": "./src/paper-model.ts"
   },
   "scripts": {
     "lint": "eslint .",

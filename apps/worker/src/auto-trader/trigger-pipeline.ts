@@ -8,6 +8,7 @@ import {
   deriveStopLossTakeProfit,
   estimatePriceImpact,
   evaluateTierTrigger,
+  validateBracket,
   type ActiveTwap,
   type ExecutionAdapter,
   type OrderBookSource,
@@ -112,7 +113,62 @@ export async function evaluateTrigger(
   // audit trail a future backtest replays against.
   const globalKillSwitch = await deps.riskGuard.isGlobalKillSwitchActive();
 
-  const skip = trustEval.blocked || counterFlow.skip || globalKillSwitch;
+  const signalSkip = trustEval.blocked || counterFlow.skip || globalKillSwitch;
+
+  // Only fetch the book (and compute price impact / SL-TP off it) if there's any chance of
+  // actually opening a trade — a skip decided above never needs it. entryPx/stopLossPx/
+  // takeProfitPx are decimal strings (money); maxMovePct is a percentage, stays `number`.
+  // entryPx is the TOUCH (best ask for a buy, best bid for a sell) and is the single price
+  // reference for the whole bracket: the paper fill AND the SL/TP are anchored to it.
+  let entryPx: string | undefined;
+  let maxMovePct: number | undefined;
+  let depthExhausted: boolean | undefined;
+  let stopLossPx: string | undefined;
+  let takeProfitPx: string | undefined;
+  let spreadPx: string | undefined;
+  let bracketRejection: string | undefined;
+  if (!signalSkip) {
+    const book = await deps.orderBookSource.getBook(signal.coin);
+    // Walk the side the TWAP itself trades INTO — a buy TWAP lifts asks, a sell TWAP hits
+    // bids (see packages/trading-core price-impact.ts's own doc comment). The exchange
+    // (Hyperliquid today, via HyperliquidOrderBookSource) already normalizes to
+    // {price, size} — trigger-pipeline.ts never sees an exchange-specific book shape.
+    const bookSide = signal.side === "buy" ? book.asks : book.bids;
+    const bestAsk = book.asks[0];
+    const bestBid = book.bids[0];
+    const bestLevel = bookSide[0];
+    // Both sides are needed now: the spread (ask - bid) is what tells validateBracket whether
+    // a derived stop is real or just quoting noise.
+    if (!bestLevel || !bestAsk || !bestBid) {
+      logger.warn(
+        { coin: signal.coin, side: signal.side },
+        "empty order book side — skipping trigger",
+      );
+      return;
+    }
+    entryPx = bestLevel.price;
+    spreadPx = new Decimal(bestAsk.price).minus(bestBid.price).toString();
+    const impact = estimatePriceImpact(bookSide, actualNotionalUsd);
+    maxMovePct = impact.maxMovePct;
+    depthExhausted = impact.depthExhausted;
+    const sltp = deriveStopLossTakeProfit(entryPx, impact.maxMovePct, signal.side);
+    stopLossPx = sltp.stopLossPx;
+    takeProfitPx = sltp.takeProfitPx;
+
+    // Skip (and log why) instead of opening a trade whose bracket is born invalid — zero-width
+    // when the TWAP fits inside the first book level, stop on the wrong side, or stop inside the
+    // spread (2026-09-25 audit: 28 of 78 paper trades were malformed this way).
+    const bracket = validateBracket({
+      side: signal.side,
+      entryPx,
+      stopLossPx,
+      takeProfitPx,
+      spreadPx,
+    });
+    if (!bracket.valid) bracketRejection = bracket.reason;
+  }
+
+  const skip = signalSkip || bracketRejection !== undefined;
   // Both multipliers feed the actual position size (computePositionSizeUsd below) — checking
   // only counterFlow.sizeMultiplier mislabeled every trust-reduced-but-not-counter-flow-
   // reduced trade as "opened" (code-review, 2026-09-23), corrupting trigger_evaluations, the
@@ -122,38 +178,6 @@ export async function evaluateTrigger(
     : counterFlow.sizeMultiplier < 1 || trustEval.sizeMultiplier < 1
       ? "reduced"
       : "opened";
-
-  // Only fetch the book (and compute price impact / SL-TP off it) if there's any chance of
-  // actually opening a trade — a skip decided above never needs it. entryPx/stopLossPx/
-  // takeProfitPx are decimal strings (money); maxMovePct is a percentage, stays `number`.
-  let entryPx: string | undefined;
-  let maxMovePct: number | undefined;
-  let depthExhausted: boolean | undefined;
-  let stopLossPx: string | undefined;
-  let takeProfitPx: string | undefined;
-  if (!skip) {
-    const book = await deps.orderBookSource.getBook(signal.coin);
-    // Walk the side the TWAP itself trades INTO — a buy TWAP lifts asks, a sell TWAP hits
-    // bids (see packages/trading-core price-impact.ts's own doc comment). The exchange
-    // (Hyperliquid today, via HyperliquidOrderBookSource) already normalizes to
-    // {price, size} — trigger-pipeline.ts never sees an exchange-specific book shape.
-    const bookSide = signal.side === "buy" ? book.asks : book.bids;
-    const bestLevel = bookSide[0];
-    if (!bestLevel) {
-      logger.warn(
-        { coin: signal.coin, side: signal.side },
-        "empty order book side — skipping trigger",
-      );
-      return;
-    }
-    entryPx = bestLevel.price;
-    const impact = estimatePriceImpact(bookSide, actualNotionalUsd);
-    maxMovePct = impact.maxMovePct;
-    depthExhausted = impact.depthExhausted;
-    const sltp = deriveStopLossTakeProfit(entryPx, impact.maxMovePct, signal.side);
-    stopLossPx = sltp.stopLossPx;
-    takeProfitPx = sltp.takeProfitPx;
-  }
 
   const [evaluation] = await db
     .insert(triggerEvaluations)
@@ -176,6 +200,7 @@ export async function evaluateTrigger(
       detail: {
         normalizedNotionalUsd: tierResult.normalizedNotionalUsd,
         entryPx,
+        spreadPx,
         maxMovePct,
         depthExhausted,
         stopLossPx,
@@ -191,7 +216,9 @@ export async function evaluateTrigger(
             ? "counter_flow"
             : globalKillSwitch
               ? "kill_switch"
-              : undefined,
+              : bracketRejection !== undefined
+                ? `invalid_bracket:${bracketRejection}`
+                : undefined,
       },
       occurredAt: signal.occurredAt,
     })
@@ -205,6 +232,7 @@ export async function evaluateTrigger(
         blocked: trustEval.blocked,
         counterFlowSkip: counterFlow.skip,
         globalKillSwitch,
+        bracketRejection,
       },
       "trigger skipped",
     );
@@ -215,7 +243,7 @@ export async function evaluateTrigger(
   // everything below — guaranteed set by the `!skip` branch above (this block is
   // unreachable when skip is true, since that path already returned), but written as an
   // explicit guard rather than a non-null assertion.
-  if (stopLossPx === undefined || takeProfitPx === undefined) {
+  if (entryPx === undefined || stopLossPx === undefined || takeProfitPx === undefined) {
     logger.error({ coin: signal.coin }, "unreachable: SL/TP missing on a non-skipped trigger");
     return;
   }
@@ -256,6 +284,7 @@ export async function evaluateTrigger(
         coin: signal.coin,
         side: signal.side,
         sizeUsd,
+        referencePx: entryPx,
         stopLossPx,
         takeProfitPx,
       });

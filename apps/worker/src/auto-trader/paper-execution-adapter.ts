@@ -1,5 +1,5 @@
 import { autoTrades, type Database } from "@hypertracker/db";
-import { Decimal } from "@hypertracker/trading-core";
+import { computePaperExit, Decimal } from "@hypertracker/trading-core";
 import type {
   ExecutionAdapter,
   OpenPositionRequest,
@@ -11,7 +11,7 @@ import type { Logger } from "pino";
 
 /**
  * Phase A's only ExecutionAdapter (CLAUDE.md, 2026-09-22 decision: paper first, live is a
- * separate plan+confirmation later). Simulates a fill at the current mid price and tracks
+ * separate plan+confirmation later). Simulates a fill at the request's reference (touch) price and tracks
  * the resulting "position" entirely in packages/db's auto_trades table — never signs or
  * submits anything to Hyperliquid. A future live adapter (Phase B,
  * packages/hyperliquid-sdk-backed) implements the exact same ExecutionAdapter interface, so
@@ -42,21 +42,20 @@ export class PaperExecutionAdapter implements ExecutionAdapter {
   // adapter is a drop-in replacement.
   // eslint-disable-next-line @typescript-eslint/require-await -- see comment above
   async openPosition(request: OpenPositionRequest): Promise<OpenPositionResult> {
-    const midPriceNum = this.getMidPrice(request.coin);
-    if (midPriceNum === undefined) {
-      throw new Error(
-        `PaperExecutionAdapter.openPosition: no mid price available for ${request.coin}`,
-      );
-    }
-    const midPrice = new Decimal(midPriceNum);
-    const sizeBase = new Decimal(request.sizeUsd).dividedBy(midPrice);
+    // Fills exactly at the request's reference price (the touch the SL/TP were derived from)
+    // — NOT at the cached allMids mid. Two different price references for entry vs SL/TP is
+    // what produced brackets born on the wrong side of their own entry (2026-09-25 audit:
+    // 28 of 78 trades). Spread is paid by construction: a buy fills at the ask, a sell at the
+    // bid, not at the friendlier mid.
+    const fillPx = new Decimal(request.referencePx);
+    const sizeBase = new Decimal(request.sizeUsd).dividedBy(fillPx);
 
     this.logger.info(
       {
         accountId: request.accountId,
         coin: request.coin,
         side: request.side,
-        entryPx: midPriceNum,
+        entryPx: request.referencePx,
       },
       "paper: simulated fill",
     );
@@ -65,7 +64,7 @@ export class PaperExecutionAdapter implements ExecutionAdapter {
       // Not a real Hyperliquid order id — clearly tagged so nothing downstream mistakes this
       // for a live identifier.
       externalOrderId: `paper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      entryPx: midPrice.toString(),
+      entryPx: fillPx.toString(),
       filledSize: sizeBase.toString(),
       stopLossOrderId: null,
       takeProfitOrderId: null,
@@ -88,7 +87,20 @@ export class PaperExecutionAdapter implements ExecutionAdapter {
     if (!open) return;
 
     const midPriceNum = this.getMidPrice(coin);
-    const pnl = midPriceNum !== undefined ? this.computePnl(open, new Decimal(midPriceNum)) : null;
+    const pnl =
+      midPriceNum !== undefined && open.entryPx
+        ? new Decimal(
+            computePaperExit({
+              side: open.side === "buy" ? "buy" : "sell",
+              sizeUsd: open.sizeUsd,
+              entryPx: open.entryPx,
+              stopLossPx: open.stopLossPx,
+              takeProfitPx: open.takeProfitPx,
+              midPx: String(midPriceNum),
+              kind: "manual",
+            }).netPnlUsd,
+          )
+        : null;
 
     await this.db
       .update(autoTrades)

@@ -8,6 +8,12 @@ export const openPositionRequestSchema = z.object({
   coin: z.string(),
   side: tradeSide,
   sizeUsd: decimalString,
+  // The touch price (best ask for a buy, best bid for a sell) the SL/TP levels below were
+  // derived from. ONE price reference for the whole bracket: a paper adapter fills exactly
+  // here; a live adapter would use it to anchor its limit price / slippage guard. Never a
+  // separately-sourced (e.g. cached mid) price — two references is what produced brackets
+  // born on the wrong side of their own entry (2026-09-25 audit).
+  referencePx: decimalString,
   stopLossPx: decimalString,
   takeProfitPx: decimalString,
 });

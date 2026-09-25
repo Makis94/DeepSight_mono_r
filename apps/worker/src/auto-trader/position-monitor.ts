@@ -1,5 +1,5 @@
 import { autoTrades, type AutoTrade, type Database } from "@hypertracker/db";
-import { Decimal } from "@hypertracker/trading-core";
+import { computePaperExit, Decimal } from "@hypertracker/trading-core";
 import { and, eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { MidPriceCache } from "../twap-watcher/mid-price-cache.js";
@@ -83,12 +83,23 @@ export class PositionMonitor {
     }
     if (!hit) return;
 
-    const entryPx = trade.entryPx ? new Decimal(trade.entryPx) : null;
+    // Net-of-fees PnL at a modeled exit — TP fills at its own level (resting limit, maker fee),
+    // SL at the worse of its level and the observed mid (stop-market, taker fee); see
+    // packages/trading-core paper-model.ts. Realized PnL used to be computed at whatever mid
+    // the poll happened to see, banking random overshoot past TP and ignoring fees entirely.
     let realizedPnlUsd: Decimal | null = null;
-    if (entryPx !== null && entryPx.gt(0)) {
-      const sizeBase = new Decimal(trade.sizeUsd).dividedBy(entryPx);
-      const direction = trade.side === "buy" ? 1 : -1;
-      realizedPnlUsd = price.minus(entryPx).times(sizeBase).times(direction);
+    if (trade.entryPx && new Decimal(trade.entryPx).gt(0)) {
+      realizedPnlUsd = new Decimal(
+        computePaperExit({
+          side: trade.side === "buy" ? "buy" : "sell",
+          sizeUsd: trade.sizeUsd,
+          entryPx: trade.entryPx,
+          stopLossPx: trade.stopLossPx,
+          takeProfitPx: trade.takeProfitPx,
+          midPx: price.toString(),
+          kind: hit === "closed_tp" ? "take_profit" : "stop_loss",
+        }).netPnlUsd,
+      );
     }
 
     // `ticking` already prevents an overlapping tick() from racing this same trade, but the

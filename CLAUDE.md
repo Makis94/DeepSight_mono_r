@@ -588,7 +588,24 @@ separate account-settings route. One page contains:
   TP / 14 SL, +$6.80. **Before using paper results to decide anything about Phase B:** anchor
   SL/TP to the actual fill price (single reference), skip/flag trades whose SL/TP geometry is
   invalid or zero-width, fill at the touch (ask for buy / bid for sell) with a fee model, and
-  report PnL excluding thin-coin outliers. Not fixed yet — flagged, awaiting a decision.
+  report PnL excluding thin-coin outliers. **FIXED 2026-09-25** (customer: "чини модель"):
+  entry, SL and TP now share ONE price reference — the touch (ask for buy / bid for sell) from
+  the fresh `l2Book`, passed to the adapter as `OpenPositionRequest.referencePx`; the paper
+  adapter fills exactly there (spread paid by construction, no more cached-mid fills);
+  `validateBracket()` (`trading-core/paper-model.ts`) makes the pipeline SKIP — logged as
+  `skipReason: "invalid_bracket:<zero_width_bracket|stop_wrong_side|take_profit_wrong_side|
+stop_inside_spread>"` — any signal whose bracket is zero-width, on the wrong side, or has a
+  stop closer than `MIN_STOP_DISTANCE_SPREADS` (=2, calibration placeholder) full spreads;
+  exits go through `computePaperExit()`: TP fills at its own level (maker fee), SL at the worse
+  of its level and the observed mid (taker fee), entry pays taker, and `realized_pnl_usd` is
+  now NET of both fees (Hyperliquid base perps tier: taker 0.045% / maker 0.015%, verified
+  against the hyperliquid-docs MCP + hyperliquid-api-reviewer 2026-09-25). Book sides are now
+  sorted explicitly (best-first ordering is undocumented). **Data cut-over:** every
+  `auto_trades` row opened BEFORE this deploy used the old, optimistic, gross-of-fee model —
+  filter calibration analysis to rows opened after the cut-over (record the deploy time
+  below); expect FEWER trades (invalid brackets are skipped, notably liquid coins whose
+  predicted impact is ~0). Residual known optimism: exit detection compares mids to levels
+  (up to half a spread early) and the spread is not charged again on exit.
 
 ## Claude Design workflow for apps/web
 
