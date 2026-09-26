@@ -1,4 +1,5 @@
-import { bigint, bigserial, numeric, pgTable, timestamp, unique } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { bigint, bigserial, numeric, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { tradingAccounts } from "./trading-accounts.js";
 
 // One row per trading_accounts row — kept separate from trading_accounts itself (rather than
@@ -27,6 +28,16 @@ export const riskLimits = pgTable(
     baseSizeUsd: numeric("base_size_usd").notNull().default("50"),
     maxPositionUsd: numeric("max_position_usd").notNull(),
     maxDailyLossUsd: numeric("max_daily_loss_usd").notNull(),
+    // Coins this account never opens NEW trades on (user-picked tags on the Auto-trading
+    // page). Exact, case-sensitive Hyperliquid symbols (e.g. "kPEPE" != "KPEPE"). Only gates
+    // the per-account fan-out in apps/worker's trigger-pipeline — the signal itself is still
+    // evaluated and logged to trigger_evaluations, so calibration data stays complete — and
+    // never touches an already-open position (same soft-stop semantics as tradingEnabled).
+    // Empty by default: nothing ignored until the user chooses.
+    ignoredCoins: text("ignored_coins")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

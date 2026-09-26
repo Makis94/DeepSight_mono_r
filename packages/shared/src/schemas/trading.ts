@@ -83,10 +83,26 @@ export const updateTradingStatusBodySchema = z.object({
 });
 export type UpdateTradingStatusBody = z.infer<typeof updateTradingStatusBodySchema>;
 
+// A Hyperliquid coin symbol as the API/auto-trader use it — case-sensitive on purpose ("kPEPE"
+// is not "KPEPE"), optionally dex-prefixed for HIP-3 assets ("xyz:NVDA"). Format-checked only,
+// not membership-checked against any list: the auto-trader can trade coins outside the
+// top-250 registry, and a stale list must never make a saved ignore un-saveable.
+export const coinSymbolSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9]{1,20}(:[A-Za-z0-9]{1,20})?$/, "invalid coin symbol");
+export const MAX_IGNORED_COINS = 100;
+const ignoredCoinsSchema = z
+  .array(coinSymbolSchema)
+  .max(MAX_IGNORED_COINS)
+  .transform((coins) => [...new Set(coins)]);
+
 export const riskLimitsResponseSchema = z.object({
   baseSizeUsd: decimalString,
   maxPositionUsd: decimalString,
   maxDailyLossUsd: decimalString,
+  // .default([]) so a web build that lands a few minutes before the api that started sending
+  // this field (Vercel deploys far faster than scripts/deploy.sh) still parses old responses.
+  ignoredCoins: z.array(z.string()).default([]),
 });
 export type RiskLimitsResponse = z.infer<typeof riskLimitsResponseSchema>;
 
@@ -97,8 +113,14 @@ export const updateRiskLimitsBodySchema = z.object({
   baseSizeUsd: positiveDecimalString.optional(),
   maxPositionUsd: positiveDecimalString.optional(),
   maxDailyLossUsd: positiveDecimalString.optional(),
+  // Full replacement list, not add/remove deltas — the form always sends the whole tag set.
+  ignoredCoins: ignoredCoinsSchema.optional(),
 });
 export type UpdateRiskLimitsBody = z.infer<typeof updateRiskLimitsBodySchema>;
+
+// GET /trading/coins — the options for the "ignored coins" tag picker.
+export const tradingCoinsResponseSchema = z.object({ coins: z.array(z.string()) });
+export type TradingCoinsResponse = z.infer<typeof tradingCoinsResponseSchema>;
 
 // GET /trading/leaderboard row — one EXTERNAL wallet's Trust Score, not one of our own
 // users (see packages/db trust-scores.ts's own doc comment on this distinction).

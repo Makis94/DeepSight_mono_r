@@ -260,6 +260,17 @@ export async function evaluateTrigger(
 
   for (const account of accounts) {
     try {
+      // User-chosen "ignored coins" (risk_limits.ignoredCoins) — filtered HERE, in the per-
+      // account fan-out, not earlier: the signal above is account-independent and has already
+      // been evaluated and logged to trigger_evaluations (calibration data stays complete),
+      // and this only ever stops NEW entries, never touching an already-open position.
+      if (account.ignoredCoins.includes(signal.coin)) {
+        logger.debug(
+          { accountId: account.tradingAccountId, coin: signal.coin },
+          "coin ignored by account",
+        );
+        continue;
+      }
       if (accountsWithOpenPosition.has(account.tradingAccountId)) continue;
 
       const todaysLossUsd = todaysLossByAccount.get(account.tradingAccountId) ?? "0";

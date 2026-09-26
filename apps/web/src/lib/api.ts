@@ -23,6 +23,7 @@ import {
   riskLimitsResponseSchema,
   startLinkResponseSchema,
   tradingAccountResponseSchema,
+  tradingCoinsResponseSchema,
   type AutoTradeResponse,
   type ConfirmLinkBody,
   type LeaderboardEntry,
@@ -486,6 +487,16 @@ export async function getRiskLimits(): Promise<RiskLimitsResponse> {
     throw new Error(`failed to load risk limits: ${response.status}`);
   }
   return riskLimitsResponseSchema.parse(await response.json());
+}
+
+// Options for the "ignored coins" tag picker: top-250 registry ∪ every coin the auto-trader has
+// evaluated (see apps/api's GET /trading/coins for why this isn't the existing /coins).
+export async function listTradingCoins(): Promise<string[]> {
+  const response = await authFetch(`${API_URL}/trading/coins`);
+  if (!response.ok) {
+    throw new Error(`failed to list trading coins: ${response.status}`);
+  }
+  return tradingCoinsResponseSchema.parse(await response.json()).coins;
 }
 
 export async function updateRiskLimits(body: UpdateRiskLimitsBody): Promise<void> {

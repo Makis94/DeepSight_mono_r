@@ -167,3 +167,25 @@
 .ht-trading-short {
   color: var(--short);
 }
+
+.ht-trading-ignored {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+}
+
+.ht-trading-ignored-title {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ht-trading-ignored .ht-trading-muted {
+  margin: 0;
+}
+
+.ht-trading-quick-ignore {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

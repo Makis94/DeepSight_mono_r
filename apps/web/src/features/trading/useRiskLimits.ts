@@ -11,6 +11,7 @@ export interface RiskLimitsState {
     baseSizeUsd: string;
     maxPositionUsd: string;
     maxDailyLossUsd: string;
+    ignoredCoins: string[];
   }) => Promise<boolean>;
 }
 
@@ -52,6 +53,7 @@ export function useRiskLimits(linked: boolean): RiskLimitsState {
       baseSizeUsd: string;
       maxPositionUsd: string;
       maxDailyLossUsd: string;
+      ignoredCoins: string[];
     }): Promise<boolean> => {
       setSaving(true);
       setError(null);

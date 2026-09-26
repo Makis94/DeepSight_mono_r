@@ -607,6 +607,22 @@ stop_inside_spread>"` — any signal whose bracket is zero-width, on the wrong s
   predicted impact is ~0). Residual known optimism: exit detection compares mids to levels
   (up to half a spread early) and the spread is not charged again on exit.
 
+- ✅ **Per-account "ignored coins", 2026-09-26** (customer request, plan confirmed first): tag
+  picker on the Auto-trading page's risk form (reuses the feed's `CoinFilter`); migration
+  `0022` adds `risk_limits.ignored_coins text[] NOT NULL DEFAULT '{}'` (additive; nothing is
+  ignored until the user chooses, BTC/ETH/SOL are one-tap suggestions, not defaults). Extends
+  the existing `GET/PATCH /trading/risk-limits` (no new settings route) + a new
+  `GET /trading/coins` (top-250 registry UNION every coin the auto-trader has evaluated —
+  deliberately not the existing subscription-gated, top-250-only `/coins`). Enforced ONLY in
+  `trigger-pipeline.ts`'s per-account fan-out (`account.ignoredCoins.includes(signal.coin)`):
+  the account-independent signal is still evaluated and logged to `trigger_evaluations`
+  (calibration data stays complete) and already-open positions keep running to their own
+  TP/SL — same soft-stop semantics as `tradingEnabled`. Symbols are exact/case-sensitive
+  (`kPEPE` != `KPEPE`), format-validated only, max 100, deduped. Motivation: on liquid majors
+  the predicted-impact brackets are a few bps, below the ~6 bps round-trip fee (see the
+  2026-09-25 audit above). The fee-aware automatic skip (TP distance < fees) is a separate,
+  still-open decision.
+
 ## Claude Design workflow for apps/web
 
 Do not design screens in Claude Design before `apps/web` has a basic skeleton with real design tokens and a handful of base components — designing in a vacuum first produces screens that don't match the project's actual tokens/components and have to be reconciled later.

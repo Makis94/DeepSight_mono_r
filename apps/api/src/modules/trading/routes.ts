@@ -1,7 +1,9 @@
 import {
   autoTrades,
+  coinRegistry,
   riskLimits,
   tradingAccounts,
+  triggerEvaluations,
   trustScores,
   type Database,
 } from "@hypertracker/db";
@@ -314,6 +316,7 @@ export function tradingRoutes(app: FastifyInstance, db: Database): void {
         baseSizeUsd: riskLimits.baseSizeUsd,
         maxPositionUsd: riskLimits.maxPositionUsd,
         maxDailyLossUsd: riskLimits.maxDailyLossUsd,
+        ignoredCoins: riskLimits.ignoredCoins,
       })
       .from(riskLimits)
       .innerJoin(tradingAccounts, eq(tradingAccounts.id, riskLimits.tradingAccountId))
@@ -332,6 +335,28 @@ export function tradingRoutes(app: FastifyInstance, db: Database): void {
     return row;
   });
 
+  // Options for the "ignored coins" tag picker. Deliberately NOT the existing /coins (which
+  // needs an active subscription and only returns the top-250 registry): the trading page is
+  // reachable without a subscription, and the auto-trader trades any coin its TWAP signals
+  // name — including ones outside the registry (SAGA, AZTEC, ...) — so the options are the
+  // registry UNION every coin the auto-trader has actually evaluated.
+  app.get("/trading/coins", async (request, reply) => {
+    const session = await requireSession(request, reply, db);
+    if (!session) return;
+
+    const [registry, seen] = await Promise.all([
+      db
+        .select({ symbol: coinRegistry.symbol })
+        .from(coinRegistry)
+        .where(eq(coinRegistry.isActive, true)),
+      db.selectDistinct({ symbol: triggerEvaluations.coin }).from(triggerEvaluations),
+    ]);
+    const coins = [
+      ...new Set([...registry.map((r) => r.symbol), ...seen.map((r) => r.symbol)]),
+    ].sort();
+    return { coins };
+  });
+
   app.patch("/trading/risk-limits", async (request, reply) => {
     const session = await requireSession(request, reply, db);
     if (!session) return;
@@ -341,11 +366,12 @@ export function tradingRoutes(app: FastifyInstance, db: Database): void {
       !body.success ||
       (body.data.baseSizeUsd === undefined &&
         body.data.maxPositionUsd === undefined &&
-        body.data.maxDailyLossUsd === undefined)
+        body.data.maxDailyLossUsd === undefined &&
+        body.data.ignoredCoins === undefined)
     ) {
-      await reply
-        .status(400)
-        .send({ error: "provide at least one of baseSizeUsd/maxPositionUsd/maxDailyLossUsd" });
+      await reply.status(400).send({
+        error: "provide at least one of baseSizeUsd/maxPositionUsd/maxDailyLossUsd/ignoredCoins",
+      });
       return;
     }
 
@@ -377,6 +403,7 @@ export function tradingRoutes(app: FastifyInstance, db: Database): void {
         ...(body.data.maxDailyLossUsd !== undefined && {
           maxDailyLossUsd: body.data.maxDailyLossUsd,
         }),
+        ...(body.data.ignoredCoins !== undefined && { ignoredCoins: body.data.ignoredCoins }),
         updatedAt: new Date(),
       })
       .where(eq(riskLimits.tradingAccountId, account.id))

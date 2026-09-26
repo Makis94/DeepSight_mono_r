@@ -17,6 +17,8 @@ export interface EligibleAccount {
   baseSizeUsd: string;
   maxPositionUsd: string;
   maxDailyLossUsd: string;
+  // Exact Hyperliquid symbols this account never opens NEW trades on (risk_limits.ignoredCoins).
+  ignoredCoins: readonly string[];
 }
 
 /**
@@ -57,6 +59,7 @@ export class RiskGuard {
         baseSizeUsd: riskLimits.baseSizeUsd,
         maxPositionUsd: riskLimits.maxPositionUsd,
         maxDailyLossUsd: riskLimits.maxDailyLossUsd,
+        ignoredCoins: riskLimits.ignoredCoins,
       })
       .from(tradingAccounts)
       .innerJoin(riskLimits, eq(riskLimits.tradingAccountId, tradingAccounts.id))
@@ -71,6 +74,7 @@ export class RiskGuard {
       baseSizeUsd: row.baseSizeUsd,
       maxPositionUsd: row.maxPositionUsd,
       maxDailyLossUsd: row.maxDailyLossUsd,
+      ignoredCoins: row.ignoredCoins,
     }));
   }
 

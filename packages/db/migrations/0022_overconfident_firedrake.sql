@@ -1,0 +1,1 @@
+ALTER TABLE "risk_limits" ADD COLUMN "ignored_coins" text[] DEFAULT '{}'::text[] NOT NULL;
